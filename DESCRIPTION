@@ -2,7 +2,8 @@ Package: moses
 Title: Microbiome Ontology Suite for Exploration and Synthesis
 Version: 0.0.1
 Authors@R: 
-    person("Kelli", "Feeser", , "first.last@example.com", role = c("aut", "cre"))
+    person("Kelli", "Feeser", , "kfeeser@lanl.gov", role = c("aut", "cre")),
+        comment = c(ORCID = "0000-0002-4144-0294")
 Description: What the package does (one paragraph).
 License: MIT + file LICENSE
 Encoding: UTF-8
