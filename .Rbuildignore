@@ -1,3 +1,5 @@
 ^moses\.Rproj$
 ^\.Rproj\.user$
 ^LICENSE\.md$
+^docs/.*\\.pptx$
+^ignore_charles$

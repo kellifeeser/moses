@@ -1,0 +1,1014 @@
+---
+title: "**M**icrobiome **O**ntology **S**uite for **E**xploration and **S**tatistics"
+output: 
+  html_document:
+    css: moses_index.css
+    theme: flatly
+runtime: shiny
+---
+
+```{css, echo=F, eval=F}
+
+/* Custom CSS for the interface */
+body, .container-fluid {
+  padding-left: 10px !important;  /* Reduce as needed */
+  margin-left: 0 !important;
+}
+
+
+h1.title {
+  font-style: italic;
+  font-size: 20px;  /* or whatever size you prefer */
+  font-weight: 500; /* optional: make it lighter */
+  color: #343a40;   /* optional: match your theme */
+  margin-left: 25px;
+}
+
+
+.navbar-custom {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #dee2e6;
+  padding: 10px 20px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 10px;
+  width: 100%;
+  min-width: 935px;
+}
+
+.navbar-links {
+  display: flex;
+  gap: 20px;
+}
+
+.navbar-links a {
+  color: #495057;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.navbar-links a:hover {
+  color: #007bff;
+}
+
+.load-data-section {
+  background-color: #f8f9fa;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  text-align: left;
+  min-width: 935px;
+}
+
+.load-data-btn {
+  background-color: #000F7E;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.load-data-btn:hover {
+  background-color: #FB4653;
+}
+
+.start-here-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: #343a40;
+  font-weight: 600;
+  margin-bottom: 6px;
+  padding-left: 20px;
+  animation: fadeIn 1.2s ease-out;
+}
+
+.start-here-pill-left {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  transform: translateY(-50%) translateX(25px); /* offset spacing from button */
+
+  background-color: #F7C220;
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 50px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+  animation: gentlePulse 2s infinite;
+}
+
+.start-here-pill-left i {
+  font-size: 16px;
+}
+
+/* Animation */
+@keyframes gentlePulse {
+  0%, 100% {
+    transform: translateY(-50%) translateX(-10px) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-50%) translateX(-10px) scale(1.05);
+    opacity: 0.85;
+  }
+}
+
+.data-menu-panel {
+  background-color: #f8f9fa;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.shiny-notification {
+  background-color: #007bff;
+  color: white;
+  box-shadow: 0 0 5px rgba(0,0,0,0.1);
+  opacity: 1 !important;
+}
+
+.shiny-notification-panel {
+  background: none !important;
+}
+
+.shiny-busy {
+  cursor: wait !important;
+}
+
+.shiny-busy::before {
+  background-color: transparent !important; /* removes grey overlay */
+}
+
+.nav-bar-with-dropdowns {
+  background-color: #e9ecef;
+  padding: 10px 20px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  position: relative;
+  min-width: 935px;
+}
+
+.nav-item {
+  position: relative;
+  display: inline-block;
+}
+
+.nav-link {
+  color: #6c757d;
+  text-decoration: none;
+  padding: 8px 12px;
+  border-radius: 3px;
+  transition: all 0.2s;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.nav-link:hover {
+  background-color: #dee2e6;
+  color: #495057;
+}
+
+.nav-link.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background-color: white;
+  min-width: 300px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+  z-index: 1000;
+  padding: 15px;
+  display: none;
+}
+
+.nav-item:hover .dropdown-menu {
+  display: block;
+}
+
+.data-explorer-frame {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 15px 20px;
+  margin-bottom: 15px;
+  margin-left: -45px;
+  min-width: 750px;
+}
+
+.data-explorer-header {
+  font-weight: bold;
+  color: #495057;
+  margin-top: -6px;
+  font-size: 15px;
+}
+
+.data-explorer-options {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: flex-start; /* Align everything left */
+}
+
+.explorer-buttons-row1 {
+  display: flex;
+  justify-content: flex-start;
+  gap: 25px;
+  margin-left: 70px;
+  margin-bottom: -5px;
+}
+
+.explorer-buttons-row2 {
+  margin-top: -5px;
+  margin-left: -120px;
+  margin-bottom: -5px;
+}
+
+
+.explorer-buttons {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.data-explorer-dropdown {
+  min-width: 400px;
+}
+
+.advanced-mode-section {
+  position: relative;
+  display: inline-block;
+}
+
+.advanced-mode-btn {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  width: 85%;
+}
+
+.advanced-mode-btn:hover {
+  background-color: #218838;
+}
+
+.advanced-sidebar {
+  background-color: #6c757d;
+  color: white;
+  padding: 20px;
+  border-radius: 6px;
+  width: 85%;
+  margin-top: 10px;
+  margin-right: 2px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+<!-- .advanced-mode-section:hover .advanced-sidebar { -->
+<!--   display: block; -->
+<!-- } -->
+
+.advanced-sidebar h4 {
+  color: #2CC486;
+  margin-bottom: 15px;
+  margin-top: 0;
+}
+
+.advanced-nav-item {
+  display: block;
+  color: #adb5bd;
+  text-decoration: none;
+  padding: 8px 0;
+  border-bottom: 1px solid #495057;
+  cursor: pointer;
+}
+
+.advanced-nav-item:hover {
+  color: white;
+}
+
+.submenu {
+  margin-left: 15px;
+  margin-top: 5px;
+}
+
+.submenu a {
+  font-size: 14px;
+  color: white;
+}
+
+.main-frame {
+  background-color: white;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  min-height: 600px;
+  padding: 20px;
+  margin-top: 20px;
+  margin-left: -45px;
+  min-width: 750px;
+}
+
+.content-placeholder {
+  text-align: center;
+  color: #6c757d;
+  margin-top: 100px;
+}
+
+.btn-primary {
+  background-color: #3296DC;
+  border-color: #007bff;
+  margin: 2px;
+  font-size: 14px;
+}
+
+.dropdown-btn {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  background-color: white;
+  min-width: 150px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1001;
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+  top: 100%;
+  left: 0;
+}
+
+.dropdown-btn:hover .dropdown-content {
+  display: block;
+}
+
+.dropdown-content a {
+  color: #495057;
+  padding: 8px 12px;
+  text-decoration: none;
+  display: block;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.dropdown-content a:hover {
+  background-color: #f8f9fa;
+}
+
+#exploreSubmenu {
+  display: none;
+  margin-top: 5px;
+}
+
+.arrow-down {
+  display: inline-block;
+  margin-left: 5px;
+  transform: rotate(0deg);
+  transition: transform 0.2s;
+}
+
+.arrow-down.open {
+  transform: rotate(180deg);
+}
+
+```
+
+
+```{r load-packages, include=FALSE}
+library(shiny)
+library(DT)
+library(plotly)
+library(dplyr)
+library(phyloseq)
+library(shinyjs)
+library(bslib)
+```
+
+```{r dev-load-all, echo=FALSE, eval=TRUE}
+library(devtools)
+devtools::load_all()
+```
+
+```{r how-to-add-new-module, echo=FALSE,eval=FALSE}
+usethis::edit_file("R/mod_ordinate.R")
+# Write mod_ordinate_ui() + mod_ordinate_server().
+# Save.
+devtools::load_all() # —> auto-detected (Option B) or add one line to the manual list (Option A).
+# Add row to modules DF for the menu title/icon.
+# Done; reload the app.
+
+```
+
+```{r how-to-add-new-prerendered-html, echo=FALSE,eval=FALSE}
+# 1. Render html
+rmarkdown::render("ordination_report.Rmd",
+                  output_file = "ordination.html",
+                  output_dir  = "www/reports")
+
+# 2. Add a row to modules
+tibble(key = "ordinationReport",
+       title = "Ordination Report",
+       icon  = "file-lines",
+       html  = "www/reports/ordination.html",
+       need_data = FALSE)
+
+# 3. Users click, the HTML is includeHTML()-embedded inside the main frame—no re-knit, no server load.
+## (If a report needs query parameters, knit it param-wise and write a tiny Shiny wrapper that calls rmarkdown::render() on demand.)
+```
+
+```{r module-server-ui-map, echo=FALSE,eval=TRUE}
+# returns named list: key → server_function
+
+# # auto-detect from the global environment
+# all_srv <- ls(pattern = "^mod_.*_server$")
+# keys     <- sub("^mod_(.*)_server$", "\\1", all_srv)
+# module_server_map <- setNames(lapply(all_srv, get), keys)
+# 
+# # Every new module filed create is automatically picked up next time devtools::load_all() is run or the document is knitted.
+
+# by hand
+module_server_map <- list(
+  barplot = mod_barplot_server#,
+  # layers  = mod_layers_server,
+  # associations = mod_associations_server
+)
+
+keys <- names(module_server_map)              # simple fallback
+module_ui_map <- setNames(
+  lapply(keys, \(k) get(sprintf("mod_%s_ui", k))),
+  keys
+)
+
+
+# create a parallel UI map
+module_ui_map <- setNames(
+  lapply(keys, \(k) get(sprintf("mod_%s_ui", k))),
+  keys
+)
+
+```
+
+
+```{r modules-data-manifest, echo=FALSE,eval=T}
+# Parameter-driven card menu for modules
+# `modules` DF drives both UI titles and which module to call.
+## Create a data frame manifest and loop over it. One row per analysis module means adding a new tool is one line.
+modules <- tribble(
+  ~key,          ~title,         ~icon,         ~html,                   ~need_data,
+  "manipulate",  "Manipulate",   "cogs",        "../www/manipulate.html",   FALSE,
+  "overview",    "Overview",     "chart-bar",   "../www/overview.html",     TRUE,
+  "ordinate",    "Ordinate",     "project-diagram", NA,                  TRUE,   # NA = pure Shiny
+  "statistics",  "Statistics",    "calculator",  NA,                      TRUE
+)
+
+output$otherNavLinks <- renderUI({
+  tagList(
+    lapply(seq_len(nrow(modules)), function(i) {
+      r <- modules[i,]
+      disabled <- r$need_data && !values$data_loaded
+      span(
+        class = if (disabled) "nav-link disabled" else "nav-link",
+        icon(r$icon), r$title,
+        onclick = if (!disabled) glue::glue("Shiny.setInputValue('currentApp', '{r$key}')")
+      )
+    })
+  )
+})
+
+```
+
+```{r top-navbar, echo=FALSE, eval=T}
+bs_page <- bslib::page_navbar(
+  # title  = span("MOSES", style = "font-style:italic;"),
+  theme  = bs_theme(bootswatch = "flatly"),
+  nav_spacer(),              # pushes items to the right
+  nav_item(a("About",      href = "about.html", target = "_blank")),
+  nav_item(a("Tutorials",  href = "tutorials.html", target = "_blank")),
+  nav_item(a("Site Map",  href = "sitemap.html", target = "_blank"))
+)
+
+```
+
+
+
+```{r, echo=FALSE}
+# UI Components
+fluidPage(
+  useShinyjs(),
+  div(style = "padding-left: 5px; padding-right: 5px;",  # or 0px for flush-left
+
+  # Hidden input to track app state
+  div(style = "display:none;",
+      textInput("currentApp", NULL, value = "home")
+  ),
+
+  # --- Top Navigation Bar ---
+  div(class = "navbar-custom",
+      div(class = "navbar-links",
+          a("About", href = "#"),
+          a("Tutorials", href = "#"),
+          a("(planned) Site Map", href = "#")
+      )
+  ),
+
+  # --- Load Data Section ---
+  div(class = "load-data-section", style = "padding-left: 130px;",  # ← shift everything together
+      
+      div(id = "loadWrapper", style = "position: relative; display: flex; align-items: center; gap: 10px;",
+          
+          # Start Here Pill
+          tags$div(id = "startHerePill", class = "start-here-pill-left",
+                   icon("circle-arrow-right"), "Start Here"
+          ),
+          
+          # Load Data Button
+          actionButton("loadData", "Load Data", class = "load-data-btn")
+      ),
+      
+      uiOutput("dataSourceMenu"),
+      uiOutput("preloadedUI"),
+      uiOutput("importUI"),
+      uiOutput("loadedDatasetLabel")  
+  ),
+  
+  # --- Navigation Bar (Taxonomy, Group Testing, BFI) ---
+  div(class = "nav-bar-with-dropdowns",
+      style = "display: flex; justify-content: center; padding: 10px;",
+      uiOutput("otherNavLinks")
+  ),
+
+  # --- Main Layout: Sidebar + Main Frame ---
+  fluidRow(
+    column(width = 3,
+           div(
+             actionButton("advancedMode", "Advanced Mode", class = "advanced-mode-btn"),
+             uiOutput("advancedSidebarUI")
+           )
+    ),
+    column(width = 9,
+           div(class = "data-explorer-frame",
+               div(class = "data-explorer-header", "Data Explorer"),
+               div(class = "data-explorer-options",
+                   div(class = "explorer-buttons-row1",
+                       style = "display: flex; gap: 10px; margin-left: 60px;",
+                       div(class = "dropdown-btn",
+                           actionButton("manipulateBtn", "Manipulate", class = "btn btn-primary btn-sm"),
+                           div(class = "dropdown-content",
+                               a("From raw sequence data", onclick = "Shiny.setInputValue('currentApp', 'rawSequence')"),
+                               a("Annotate", onclick = "Shiny.setInputValue('currentApp', 'annotate')"),
+                               a("Prune", onclick = "Shiny.setInputValue('currentApp', 'prune')"),
+                               a("Filter/subset", onclick = "Shiny.setInputValue('currentApp', 'filter')")
+                           )
+                       ),
+                       div(class = "dropdown-btn",
+                           actionButton("overviewBtn", "Overview", class = "btn btn-primary btn-sm"),
+                           div(class = "dropdown-content",
+                               a("Summary figures", onclick = "Shiny.setInputValue('currentApp', 'summary')"),
+                               a("Top Taxa", onclick = "Shiny.setInputValue('currentApp', 'topTaxa')")
+                           )
+                       ),
+                       actionButton("ordinateBtn", "Ordinate", class = "btn btn-primary btn-sm"),
+                       actionButton("statisticsBtn", "Statistics", class = "btn btn-primary btn-sm"),
+                       div(class = "dropdown-btn",
+                           actionButton("exploreBtn", "Explore", class = "btn btn-primary btn-sm"),
+                           div(class = "dropdown-content",
+                               a("Research-driven questions", onclick = "Shiny.setInputValue('currentApp', 'research')"),
+                               a("Taxonomy plots", onclick = "Shiny.setInputValue('currentApp', 'taxonomyPlots')")
+                           )
+                       )
+                   )
+               )
+           ),
+           div(class = "main-frame",
+               uiOutput("dynamicContent")
+           )
+    )
+  ),
+
+  # --- JS Behavior ---
+  tags$script(HTML("
+    function toggleExploreSubmenu() {
+      var submenu = document.getElementById('exploreSubmenu');
+      var arrow = document.querySelector('.arrow-down');
+      if (submenu.style.display === 'none' || submenu.style.display === '') {
+        submenu.style.display = 'block';
+        arrow.classList.add('open');
+      } else {
+        submenu.style.display = 'none';
+        arrow.classList.remove('open');
+      }
+    }
+  "))
+)
+)
+```
+
+```{r context="server", echo=FALSE}
+# Server Logic
+values <- reactiveValues(
+  data_loaded = FALSE,
+  current_app = "home",
+  bac_data = NULL,
+  fun_data = NULL,
+  data_source = NULL,  # "preloaded" or "import"
+  data_name = NULL,    # e.g. "RAM"
+  advanced_open = FALSE
+)
+
+# values$data_loaded <- reactiveVal(FALSE)
+
+
+# Hide Start Here pill once Load Data clicked
+observeEvent(input$loadData, {
+  shinyjs::hide("startHerePill")
+  
+  # Reset for new selection
+  values$data_loaded <- reactiveVal(FALSE)
+  values$data_source <- NULL
+  values$data_name <- NULL
+  
+  showNotification("Please choose a data source", type = "message")
+})
+
+output$dataSourceMenu <- renderUI({
+  req(values$data_loaded(FALSE))  # Only show if data not yet loaded
+  div(class = "data-menu-panel", style = "margin-top: 15px;",
+      h5("Select Data Type:"),
+      actionButton("usePreloaded", "Use Preloaded Data", class = "btn btn-outline-primary"),
+      actionButton("importData", "Import My Data", class = "btn btn-outline-secondary")
+  )
+})
+
+output$preloadedUI <- renderUI({
+  req(values$data_loaded(FALSE))
+  req(values$data_source == "preloaded")
+  div(class = "data-menu-panel", style = "margin-top: 10px;",
+      h5("Available Preloaded Sets:"),
+      actionButton("loadRAM", "RAM", class = "btn btn-success"),
+      actionButton("placeholderPreloaded", "Placeholder", class = "btn btn-secondary", disabled = TRUE)
+  )
+})
+
+output$importUI <- renderUI({
+  req(values$data_loaded(FALSE))
+  req(values$data_source == "import")
+  div(class = "data-menu-panel", style = "margin-top: 10px;",
+      h5("My Data Import Format:"),
+      actionButton("importExcel", "Excel formatted (.csv)", class = "btn btn-secondary", disabled = TRUE),
+      actionButton("importQIIME", "QIIME formatted", class = "btn btn-secondary", disabled = TRUE),
+      actionButton("importDADA2", "dada2 formatted", class = "btn btn-secondary", disabled = TRUE),
+      actionButton("importPhyloseq", "phyloseq object", class = "btn btn-secondary", disabled = TRUE)
+  )
+})
+
+# Track data source selection
+observeEvent(input$usePreloaded, {
+  values$data_source <- "preloaded"
+})
+
+observeEvent(input$importData, {
+  values$data_source <- "import"
+})
+
+# Make “Load Data” reactive value a reactiveVal not list of several flags
+physeq_bac <- reactiveVal(NULL)
+physeq_fun <- reactiveVal(NULL)
+
+# Load RAM datasets
+observeEvent(input$loadRAM, {
+  withProgress(message = "Loading RAM dataset...", value = 0.5, {
+    physeq_bac(readRDS("../data/PreloadedDatasets/RAM/Bac_wholecommunity.rds"))
+    incProgress(0.3)
+    physeq_fun(readRDS("../data/PreloadedDatasets/RAM/Fun_wholecommunity.rds"))
+    incProgress(0.2)
+  })
+  data_loaded <- reactive(!is.null(physeq_bac()) && !is.null(physeq_fun()))
+  showNotification("RAM datasets loaded successfully!", type = "message")
+})
+
+# # Load RAM datasets
+# observeEvent(input$loadRAM, {
+#   withProgress(message = "Loading RAM dataset...", value = 0.5, {
+#     values$bac_data <- readRDS("../data/PreloadedDatasets/RAM/Bac_wholecommunity.rds")
+#     incProgress(0.3)
+#     values$fun_data <- readRDS("../data/PreloadedDatasets/RAM/Fun_wholecommunity.rds")
+#     incProgress(0.2)
+#   })
+#   
+#   values$data_loaded <- TRUE
+#   values$data_name <- "RAM"
+#   showNotification("RAM datasets loaded successfully!", type = "message")
+# })
+
+output$loadedDatasetLabel <- renderUI({
+  req(values$data_name)
+  span(style = "font-weight: 600; color: #6c757d;", paste("Loaded:", values$data_name))
+})
+
+# Toggle the sidebar with observeEvent in server
+observeEvent(input$advancedMode, {
+  values$advanced_open <- !isTRUE(values$advanced_open)
+})
+
+output$advancedSidebarUI <- renderUI({
+  req(values$advanced_open)
+
+  div(style = "margin-left: 0px; margin-top: 15px; width: 100%;",
+      div(class = "advanced-sidebar",
+          h4("Advanced Tools"),
+          a("Barplot of Taxa", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'barplot')"),
+          a("Layers", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'layers')"),
+          a("Associations", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'associations')"),
+          a("Explore Data", class = "advanced-nav-item", onclick = "toggleExploreSubmenu()",
+            span(class = "arrow-down", "▼")
+          ),
+          div(id = "exploreSubmenu", class = "submenu",
+              a("Taxonomy", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'taxonomyExplore')"),
+              a("Metadata Testing", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'metadataTesting')"),
+              a("Spatial Structuring", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'spatialStructuring')")
+          )
+      )
+  )
+})
+
+
+# Other Navigation Links (Taxonomy, Group Testing, BFI)
+output$otherNavLinks <- renderUI({
+  link_class <- if(values$data_loaded) "nav-link" else "nav-link disabled"
+  
+  tagList(
+    span("Taxonomy", class = link_class, 
+         onclick = if(values$data_loaded) "Shiny.setInputValue('currentApp', 'taxonomy')" else ""),
+    span("Group Testing", class = link_class,
+         onclick = if(values$data_loaded) "Shiny.setInputValue('currentApp', 'groupTesting')" else ""),
+    span("BFI", class = link_class,
+         onclick = if(values$data_loaded) "Shiny.setInputValue('currentApp', 'bfi')" else "")
+  )
+})
+
+# Dynamic Content based on selected app
+## module_server_map is a list that maps key → server function (for Ordinate, Statistics, etc.)
+output$dynamicContent <- renderUI({
+  app <- input$currentApp %||% "home"
+  # Home or default
+  if (app == "home") return(home_ui())
+
+  # # If a pre-rendered HTML exists in modules DF, include it
+  r <- modules %>% filter(key == app)
+  if (nrow(r) && !is.na(r$html)) return(includeHTML(r$html))
+
+  # Otherwise look for a Shiny module
+  if (app %in% names(module_ui_map)) {
+    module_ui_map[[app]](app)         # inserts the UI
+  } else {
+    div("Module not found")
+  }
+})
+
+# output$dynamicContent <- renderUI({
+#   current_app <- if(is.null(input$currentApp)) "home" else input$currentApp
+#   
+#   switch(current_app,
+#     "home" = div(class = "content-placeholder",
+#       h3("Welcome to the Data Explorer Platform"),
+#       p("Please load your data using the 'Load Data' button above to begin exploring."),
+#       p("Once data is loaded, you can access all navigation options and use either the basic Data Explorer options (blue buttons) or Advanced Mode for data exploration.")
+#     ),
+#     "rawSequence" = div(
+#       h3("Raw Sequence Data Processing"),
+#       p("Process and analyze raw sequence data..."),
+#       verbatimTextOutput("placeholder1")
+#     ),
+#     "annotate" = div(
+#       h3("Data Annotation"),
+#       p("Annotate your dataset..."),
+#       verbatimTextOutput("placeholder2")
+#     ),
+#     "prune" = div(
+#       h3("Data Pruning"),
+#       p("Prune your dataset..."),
+#       verbatimTextOutput("placeholder3")
+#     ),
+#     "filter" = div(
+#       h3("Filter/Subset Data"),
+#       p("Filter and subset your data..."),
+#       verbatimTextOutput("placeholder4")
+#     ),
+#     "summary" = div(
+#       h3("Summary Figures"),
+#       p("Generate summary visualizations..."),
+#       plotOutput("summaryPlot")
+#     ),
+#     "topTaxa" = div(
+#       h3("Top Taxa"),
+#       p("View most abundant taxa..."),
+#       DT::dataTableOutput("topTaxaTable")
+#     ),
+#     "research" = div(
+#       h3("Research-driven Questions"),
+#       p("Explore research-specific questions..."),
+#       verbatimTextOutput("researchOutput")
+#     ),
+#     "taxonomyPlots" = div(
+#       h3("Taxonomy Plots"),
+#       p("Create taxonomy-specific visualizations..."),
+#       plotOutput("taxonomyPlotsOutput")
+#     ),
+#     "barplot" = div(
+#       h3("Barplot of Taxa"),
+#       p("Create barplots showing taxonomic composition..."),
+#       plotOutput("taxaBarplot")
+#     ),
+#     "layers" = div(
+#       h3("Layers Analysis"),
+#       p("Analyze data layers..."),
+#       verbatimTextOutput("layersOutput")
+#     ),
+#     "associations" = div(
+#       h3("Associations Analysis"),
+#       p("Explore data associations..."),
+#       verbatimTextOutput("associationsOutput")
+#     ),
+#     "taxonomyExplore" = div(
+#       h3("Taxonomy Explorer"),
+#       p("Explore taxonomic data in detail..."),
+#       DT::dataTableOutput("taxonomyTable")
+#     ),
+#     "metadataTesting" = div(
+#       h3("Metadata Testing"),
+#       p("Statistical testing of metadata..."),
+#       verbatimTextOutput("metadataOutput")
+#     ),
+#     "spatialStructuring" = div(
+#       h3("Spatial Structuring"),
+#       p("Analyze spatial structure in data..."),
+#       verbatimTextOutput("spatialOutput")
+#     ),
+#     "taxonomy" = div(
+#       h3("Taxonomy Overview"),
+#       p("Quick taxonomy navigation content..."),
+#       verbatimTextOutput("taxonomyOverview")
+#     ),
+#     "groupTesting" = div(
+#       h3("Group Testing"),
+#       p("Statistical testing between groups..."),
+#       verbatimTextOutput("groupTestResults")
+#     ),
+#     "bfi" = div(
+#       h3("BFI Analysis"),
+#       p("Biological Feature Index analysis..."),
+#       verbatimTextOutput("bfiResults")
+#     ),
+#     # Statistics
+#     "statistics" = div(
+#       h3("Statistics"),
+#       p("Run basic or advanced statistical summaries on your dataset..."),
+#       verbatimTextOutput("statisticsOutput")
+#       ),
+#     # Default case
+#     div(class = "content-placeholder",
+#       h3("Content Loading..."),
+#       p("Selected application will appear here.")
+#     )
+#   )
+# })
+
+# ---------- server side ----------
+observe({
+  app <- input$currentApp
+  if (app %in% names(module_server_map)) {
+    module_server_map[[app]](app, physeq_bac)   # pass reactives as needed
+  }
+})
+## If a module needs both bac and fun data, pass a list or separate reactives.
+
+# Observe Ordinate button
+observeEvent(input$ordinateBtn, {
+  updateTextInput(session, "currentApp", value = "ordinate")
+})
+
+# Observe Statistics button
+observeEvent(input$statisticsBtn, {
+  updateTextInput(session, "currentApp", value = "statistics")
+})
+
+# Statistics output
+output$statisticsOutput <- renderText({
+  if (values$data_loaded) {
+    "Statistics tools will appear here..."
+  } else {
+    "Please load a dataset first to access statistics."
+  }
+})
+
+# Placeholder outputs (replace with your actual Shiny apps)
+output$placeholder1 <- renderText("Raw sequence processing tools will appear here...")
+output$placeholder2 <- renderText("Data annotation interface will appear here...")
+output$placeholder3 <- renderText("Data pruning tools will appear here...")
+output$placeholder4 <- renderText("Data filtering interface will appear here...")
+output$researchOutput <- renderText("Research-driven analysis tools will appear here...")
+output$layersOutput <- renderText("Layer analysis tools will appear here...")
+output$associationsOutput <- renderText("Association analysis tools will appear here...")
+output$metadataOutput <- renderText("Metadata testing interface will appear here...")
+output$spatialOutput <- renderText("Spatial analysis tools will appear here...")
+
+output$summaryPlot <- renderPlot({
+  if(values$data_loaded) {
+    plot(1:10, 1:10, main = "Summary Plot", xlab = "X", ylab = "Y")
+  } else {
+    plot.new()
+    text(0.5, 0.5, "Load data first", cex = 2)
+  }
+})
+
+output$taxonomyPlotsOutput <- renderPlot({
+  if(values$data_loaded) {
+    pie(c(30, 25, 20, 15, 10), labels = c("Phylum A", "Phylum B", "Phylum C", "Phylum D", "Other"),
+        main = "Taxonomic Distribution")
+  } else {
+    plot.new()
+    text(0.5, 0.5, "Load data first", cex = 2)
+  }
+})
+
+output$taxaBarplot <- renderPlot({
+  if(values$data_loaded) {
+    barplot(c(5, 3, 8, 2), names.arg = c("Taxa A", "Taxa B", "Taxa C", "Taxa D"),
+            main = "Taxa Distribution", col = rainbow(4))
+  } else {
+    plot.new()
+    text(0.5, 0.5, "Load data first", cex = 2)
+  }
+})
+
+output$topTaxaTable <- DT::renderDataTable({
+  if(values$data_loaded) {
+    data.frame(
+      Rank = 1:5,
+      Taxa = c("Species A", "Species B", "Species C", "Species D", "Species E"),
+      Count = c(250, 200, 175, 150, 125),
+      Percentage = c(25.0, 20.0, 17.5, 15.0, 12.5)
+    )
+  } else {
+    data.frame(Message = "Please load data first")
+  }
+}, options = list(pageLength = 10))
+
+output$taxonomyTable <- DT::renderDataTable({
+  if(values$data_loaded) {
+    data.frame(
+      Taxa = c("Species A", "Species B", "Species C"),
+      Count = c(150, 200, 75),
+      Percentage = c(35.3, 47.1, 17.6)
+    )
+  } else {
+    data.frame(Message = "Please load data first")
+  }
+})
+
+output$taxonomyOverview <- renderText({
+  if(values$data_loaded) {
+    "Taxonomy overview data would appear here..."
+  } else {
+    "Please load data first to view taxonomy overview."
+  }
+})
+
+output$groupTestResults <- renderText({
+  if(values$data_loaded) {
+    "Group testing results would appear here..."
+  } else {
+    "Please load data first to perform group testing."
+  }
+})
+
+output$bfiResults <- renderText({
+  if(values$data_loaded) {
+    "BFI analysis results would appear here..."
+  } else {
+    "Please load data first to perform BFI analysis."
+  }
+})
+```

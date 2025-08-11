@@ -1,0 +1,11 @@
+# About
+
+\
+\
+\
+
+## Build off core microbial ecology R code in pastureTools (R package)
+
+\
+
+To generate the refined, core computational code powering `moses`, I compiled code that I had written for the RAM project (all 125,641 lines of code -- 25,163 lines in 51 .R files and 100,478 in 74 .Rmd files). I then generated an index file of all unique & non-redundant 2,202 code chunks

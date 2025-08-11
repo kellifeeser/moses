@@ -1,0 +1,719 @@
+---
+title: "**M**icrobiome **O**ntology **S**uite for **E**xploration and **S**tatistics"
+output: 
+  html_document:
+    css: moses_index.css
+    theme: flatly
+    highlight: tango
+runtime: shiny
+---
+
+```{r 01-setup, echo=FALSE,eval=TRUE, message=FALSE}
+## ----------------- CORE LIBRARIES -----------------
+library(shiny);    library(bslib);      library(shinyjs)
+library(glue);     library(tibble);     library(dplyr)
+
+## ----------------- STATIC ASSETS ------------------
+# docs/ sits inside the repo’s root; www/ lives one level up
+addResourcePath("www", "../www")
+# resourcePaths()
+tags$head(
+  tags$link(
+    rel  = "stylesheet",
+    href = "www/moses_index.css"
+  ),
+  tags$link(
+    rel  = "stylesheet",
+    href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+  )
+)
+
+# new load css
+# this will create <link href="www/moses_index.css" rel="stylesheet" />
+# includeCSS("www/moses_index.css")
+
+
+
+## ----------------- GLOBAL REACTIVE STORAGE --------
+# two linked phyloseq objects (bacteria & fungi)
+physeq_bac <- reactiveVal(NULL)
+physeq_fun <- reactiveVal(NULL)
+
+## ----------------- MODULE-READY FLAGS  ------------
+# Mark which menu keys *ARE ready* right now; all others auto-disable.
+# Update this vector whenever a module/report is finished.
+ready_keys <- c(
+  "explorer",           # root tab
+  # top-level buttons ready on launch
+  "manipulate", "overview", "ordinate", "statistics", "explorer",
+  # sub-items already implemented
+  "rawSequence", "summary", "autoOrd", "alphaBeta"
+)
+
+# helper every chunk can use
+isReady <- function(key) key %in% ready_keys
+
+```
+
+
+```{r 02-load-modules, echo=FALSE, eval=TRUE}
+## ------------------ DEV / PROD MODULE LOADING ----------------------------
+## • In interactive/dev sessions we call devtools::load_all() so every file in
+##   R/ is (re)loaded instantly.  On shinyapps.io or when the package is
+##   installed, the namespace is already attached, so this is a no-op.
+
+# if (interactive() && requireNamespace("devtools", quietly = TRUE)) {
+#   devtools::load_all(quiet = TRUE)
+# }
+
+if (requireNamespace("devtools", quietly = TRUE)) {
+   # Always load the R/ folder, even inside a non-interactive Rmd run
+   devtools::load_all(quiet = TRUE)
+ }
+
+  
+source("../R/mod_explorer.R")
+# source("R/mod_explorer.R")
+
+# ─── Manually source every R/ file that defines mod_* functions ─────────────────
+# (this path so it points from docs/ folder back into the project root)
+r_files <- list.files(path = "../R", pattern = "\\.R$", full.names = TRUE)
+lapply(r_files, source, local = FALSE)  # loads mod_explore_ui, mod_explore_server, etc.
+
+# ─── Then auto-detect which mod_..._ui() and mod_..._server() functions exist ─────
+# srv_syms <- ls(pattern = "^mod_.*_server$")
+# ui_syms  <- ls(pattern = "^mod_.*_ui$")
+
+## ------------------ AUTO-DETECT UI + SERVER PAIRS ------------------------
+## We rely on the naming rule  mod_<key>_ui()  and  mod_<key>_server().
+
+srv_syms <- ls(pattern = "^mod_.*_server$")
+ui_syms  <- ls(pattern = "^mod_.*_ui$")
+
+## Guarantee that the Explorer module exists (avoid knit failures when you
+## copy this into a fresh repo and haven’t added other modules yet).
+
+if (!"mod_explorer_server" %in% srv_syms) {
+  mod_explorer_ui <- function(id) tagList(h3("Explorer (stub)"))
+  mod_explorer_server <- function(id, ...) moduleServer(id, function(...) {})
+  srv_syms <- c(srv_syms, "mod_explorer_server")
+  ui_syms  <- c(ui_syms , "mod_explorer_ui")
+}
+
+## Convert symbol vectors → named lists  (key → function)
+
+keys <- sub("^mod_(.*)_server$", "\\1", srv_syms)
+
+module_server_map <- setNames(lapply(srv_syms, get), keys)
+module_ui_map     <- setNames(lapply(ui_syms ,  get), keys)
+
+## ------------------ LINK-HELPER  (used later by UI generators) ------------
+## Produces a <span> or <a> element for the nav bars, automatically disabled
+## if the feature is not in ready_keys  *or*  needs data that isn’t loaded.
+
+renderMenuItem <- function(row, ns = identity) {
+  ready    <- isReady(row$key)
+  css_base <- "nav-link"
+  css_full <- if (ready) css_base else paste(css_base, "disabled")
+
+  span(
+    icon(row$icon), row$title,
+    class   = css_full,
+    onclick = if (ready)
+                glue("Shiny.setInputValue('{ns('currentApp')}', '{row$key}')")
+  )
+}
+
+# # All later chunks can now rely on:
+# module_ui_map[["someKey"]]( "someKey" )
+# module_server_map[["someKey"]]( "someKey", physeq_bac, physeq_fun )
+# # and on renderMenuItem(row) when looping over the modules tibble to build menus.
+
+if (!exists("mod_explorer_server")) {
+  stop("**Inside chunk 02: `mod_explorer_server` was never created or was overwritten.**")
+} #else {
+  # message("✔️  mod_explorer_server() stub has been defined.")
+# }
+```
+
+```{r 03, echo=FALSE,eval=F}
+## -------------------------------------------------------------------------
+##  One tidy tibble drives EVERY button / dropdown in the portal.
+##  • key        : unique identifier (also used for module_ui/server names)
+##  • parent     :  "root"  → blue button row
+##                  <key>   → dropdown item under that parent button
+##                  "advanced" → lives in the Advanced sidebar
+##                  "other"  → Taxonomy / GroupTesting / BFI bar
+##  • title      : label shown to user
+##  • icon       : Font-Awesome 6 “solid” icon (no fa- prefix)
+##  • html       : path to pre-rendered report   (NA = pure Shiny module)
+##  • need_data  : TRUE  → disable until a dataset is loaded
+## -------------------------------------------------------------------------
+
+modules <- tibble::tribble(
+#  key                parent       title                       icon               html                          need_data
+# ----- ROOT MOOSE BUTTONS -------------------------------------------------
+  "manipulate",       "root",      "Manipulate",               "cogs",             NA,                           FALSE,
+  "overview",         "root",      "Overview",                 "chart-bar",        NA,                           TRUE,
+  "ordinate",         "root",      "Ordinate",                 "project-diagram",  NA,                           TRUE,
+  "statistics",       "root",      "Statistics",               "calculator",       NA,                           TRUE,
+  "explore",          "root",      "Explore",                  "binoculars",       NA,                           TRUE,
+
+# ----- MANIPULATE  --------------------------------------------------------
+  "rawSequence",      "manipulate","From raw sequence",        "dna",              NA,                           FALSE,
+  "annotate",         "manipulate","Annotate",                 "tag",              NA,                           TRUE,
+  "prune",            "manipulate","Prune",                    "cut",              NA,                           TRUE,
+  "filter",           "manipulate","Filter/Sub-set",           "filter",           NA,                           TRUE,
+
+# ----- OVERVIEW -----------------------------------------------------------
+  "summary",          "overview",  "Summary figures",          "chart-pie",        "www/reports/summary.html",   TRUE,
+  "topTaxa",          "overview",  "Top taxa table",           "table",            "www/reports/top-taxa.html",  TRUE,
+
+# ----- ORDINATE -----------------------------------------------------------
+  "autoOrd",          "ordinate",  "Auto-Ordinate",            "bolt",             NA,                           TRUE,
+  "optimOrd",         "ordinate",  "Optimise ordination",      "sliders",          NA,                           TRUE,
+  "loadOrd",          "ordinate",  "Load ordination",          "folder-open",      NA,                           TRUE,
+
+# ----- STATISTICS ---------------------------------------------------------
+  "alphaBeta",        "statistics","Alpha/Beta diversity",     "chart-area",       NA,                           TRUE,
+  "adonis",           "statistics","PERMANOVA (Adonis)",       "table-cells",      NA,                           TRUE,
+  "differential",     "statistics","Differential abundance",   "dna",              NA,                           TRUE,
+
+# ----- EXPLORE  -----------------------------------------------------------
+  "research",         "explore",   "Research-driven Qs",       "question",         NA,                           TRUE,
+  "taxonomyPlots",    "explore",   "Taxonomy plots",           "sitemap",          NA,                           TRUE,
+  "spatialStruct",    "explore",   "Spatial structure",        "globe",            NA,                           TRUE,
+  "bfiNet",           "explore",   "BFI network",              "share-nodes",      NA,                           TRUE,
+
+# ----- ADVANCED SIDEBAR ---------------------------------------------------
+  "barplot",          "advanced",  "Barplot of taxa",          "chart-bar",        NA,                           TRUE,
+  "layers",           "advanced",  "Layers analysis",          "layer-group",      NA,                           TRUE,
+  "associations",     "advanced",  "Associations",             "diagram-project",  NA,                           TRUE,
+  "taxonomyExplorer", "advanced",  "Taxonomy explorer",        "table",            NA,                           TRUE,
+  "metadataTesting",  "advanced",  "Metadata testing",         "vial",             NA,                           TRUE,
+
+# ----- TOP BAR (OTHER) ----------------------------------------------------
+  "taxonomy",         "other",     "Taxonomy",                 "dna",              NA,                           TRUE,
+  "groupTesting",     "other",     "Group testing",            "users",            NA,                           TRUE,
+  "bfi",              "other",     "BFI",                      "microscope",       NA,                           TRUE
+)
+
+```
+
+```{r 03-expanded, echo=FALSE,eval=T}
+## -------------------------------------------------------------------------
+##  One tidy tibble drives EVERY button / dropdown in the portal.
+##  • key        : unique identifier (also used for module_ui/server names)
+##  • parent     :  "root"  → blue button row
+##                  <key>   → dropdown item under that parent button
+##                  "advanced" → lives in the Advanced sidebar
+##                  "other"  → Taxonomy / GroupTesting / BFI bar
+##  • title      : label shown to user
+##  • icon       : Font-Awesome 6 “solid” icon (no fa- prefix)
+##  • html       : path to pre-rendered report   (NA = pure Shiny module)
+##  • need_data  : TRUE  → disable until a dataset is loaded
+## -------------------------------------------------------------------------
+
+modules <- tibble::tribble(
+  # ─── Column names: ──────────────────────────────────────────────────────────────────
+  ~key,             ~parent,     ~title,                              ~icon,               ~html,                          ~need_data,
+
+  # =================  TOP-ROW MOOSE BUTTONS  =============================
+  "manipulate",         "root",       "Manipulate",                       "cogs",            NA,                           FALSE,
+  "overview",           "root",       "Overview",                         "chart-bar",       NA,                           TRUE,
+  "ordinate",           "root",       "Ordinate",                         "project-diagram", NA,                           TRUE,
+  "statistics",         "root",       "Statistics",                       "calculator",      NA,                           TRUE,
+  "explore",            "root",       "Explore",                          "binoculars",      NA,                           TRUE,
+
+# =================  MANIPULATE  =========================================
+  "rawSequence",        "manipulate", "From raw sequence",                "dna",             NA,                           FALSE,
+  "annotate",           "manipulate", "Annotate",                         "tag",             NA,                           TRUE,
+  "prune",              "manipulate", "Prune",                            "cut",             NA,                           TRUE,
+  "filter",             "manipulate", "Filter/Sub-set",                  "filter",          NA,                           TRUE,
+  "mergeSamples",       "manipulate", "Merge samples",                    "object-group",    NA,                           TRUE,
+  "subsetFactor",       "manipulate", "Subset by factor",                 "boxes-stacked",   NA,                           TRUE,
+
+# =================  OVERVIEW  ==========================================
+  "summary",            "overview",   "Summary figures",                  "chart-pie",       "www/reports/summary.html",   TRUE,
+  "topTaxa",            "overview",   "Top taxa table",                   "table",           "www/reports/top-taxa.html",  TRUE,
+  "alphaRare",          "overview",   "Rarefaction curves",               "wave-square",     NA,                           TRUE,
+  "globalAlphaBeta",    "overview",   "α/β heatmap",                      "grip-vertical",   NA,                           TRUE,
+
+# =================  ORDINATE  ==========================================
+  "autoOrd",            "ordinate",   "Auto-Ordinate",                    "bolt",            NA,                           TRUE,
+  "optimOrd",           "ordinate",   "Optimise ordination",              "sliders",         NA,                           TRUE,
+  "loadOrd",            "ordinate",   "Load ordination",                  "folder-open",     NA,                           TRUE,
+  "ordInertia",         "ordinate",   "Inertia plots",                    "chart-line",      NA,                           TRUE,
+
+# =================  STATISTICS  ========================================
+  "alphaBeta",          "statistics", "Alpha/Beta diversity",             "chart-area",      NA,                           TRUE,
+  "adonis",             "statistics", "PERMANOVA (Adonis)",               "table-cells",     NA,                           TRUE,
+  "differential",       "statistics", "Differential abundance",           "dna",             NA,                           TRUE,
+  "metadataCorr",       "statistics", "Metadata correlations",            "arrows-turn-to-dot",NA,                         TRUE,
+
+# =================  EXPLORE  ===========================================
+  "researchQ",          "explore",    "Research-Driven Qs",               "question",        NA,                           TRUE,
+  "taxonomyPlots",      "explore",    "Taxonomy plots",                   "sitemap",         NA,                           TRUE,
+  "taxonomyExplorer",   "explore",    "Taxonomy explorer",                "table",           NA,                           TRUE,
+  "spatialStruct",      "explore",    "Spatial structure",                "globe",           NA,                           TRUE,
+  "bfiNet",             "explore",    "BFI network",                      "share-nodes",     NA,                           TRUE,
+
+# ---------- research-driven sub-questions (parent = researchQ) ----------
+  "spatialQ",           "researchQ",  "Are my data spatially structured?", "globe",          NA,                           TRUE,
+  "groupDiffQ",         "researchQ",  "Do groups differ in composition?", "people-group",   NA,                           TRUE,
+  "taxDriverQ",         "researchQ",  "Which taxa drive differences?",    "bullseye",       NA,                           TRUE,
+  "metadataQ",          "researchQ",  "Which metadata explain patterns?", "arrows-split-up-and-left", NA,                  TRUE,
+
+
+# =================  ADVANCED SIDEBAR  ==================================
+  "barplot",            "advanced",   "Barplot of taxa",                  "chart-bar",       NA,                           TRUE,
+  "layers",             "advanced",   "Layers analysis",                  "layer-group",     NA,                           TRUE,
+  "associations",       "advanced",   "Associations",                     "diagram-project", NA,                           TRUE,
+  "dendrogram",         "advanced",   "Cluster dendrogram",               "tree",            NA,                           TRUE,
+  "network",            "advanced",   "Co-occurrence network",            "diagram-predecessor", NA,                       TRUE,
+  "ordination3D",       "advanced",   "3D ordination",                    "cube",            NA,                           TRUE,
+  "metadataTesting",    "advanced",   "Metadata testing",                 "vial",            NA,                           TRUE,
+
+# =================  TOP BAR  ===========================================
+  "taxonomy",           "other",      "Taxonomy",                         "dna",             NA,                           TRUE,
+  "groupTesting",       "other",      "Group testing",                    "users",           NA,                           TRUE,
+  "bfi",                "other",      "BFI",                              "microscope",      NA,                           TRUE
+)
+
+```
+
+```{r 04-ui-navbar, echo=FALSE, eval=TRUE}
+page_navbar(
+  theme = bs_theme(bootswatch = "flatly"),
+
+  ## Right‐side static links
+  nav_spacer(),
+  nav_item(a("About",     href = "about.html",     target = "_blank")),
+  nav_item(a("Tutorials", href = "tutorials.html", target = "_blank")),
+
+  ## Main “Explorer” tab (everything below lives inside this panel)
+  nav_panel(
+    title = "Explorer",
+    
+    # Use tagList() whenever you have multiple top‐level UI elements here
+    tagList(
+      # ----------------------------------------------------------------------
+      # (1) Hidden input to track currentApp (shinyjs can use this to switch)
+      div(
+        style = "display:none;",
+        textInput("currentApp", NULL, value = "home")
+      ),
+
+      # ----------------------------------------------------------------------
+      # (2) LOAD DATA SECTION
+      div(
+        class = "load-data-section",
+        style = "padding-left:130px;",
+        div(
+          id = "loadWrapper",
+          style = "position:relative; display:flex; align-items:center; gap:10px;",
+          tags$div(
+            id    = "startHerePill",
+            class = "start-here-pill-left",
+            icon("circle-arrow-right"),
+            "Start Here"
+          ),
+          actionButton("loadData", "Load Data", class = "load-data-btn")
+        ),
+        uiOutput("dataSourceMenu"),
+        uiOutput("preloadedUI"),
+        uiOutput("importUI"),
+        uiOutput("loadedDatasetLabel")
+      ),
+
+      # ----------------------------------------------------------------------
+      # (3) OTHER NAV LINKS (Taxonomy / Group Testing / BFI)
+      div(
+        class = "nav-bar-with-dropdowns",
+        style = "display:flex; justify-content:center; padding:10px;",
+        uiOutput("otherNavLinks")
+      ),
+
+      # ----------------------------------------------------------------------
+      # (4) MAIN LAYOUT: Sidebar + Main Frame
+      fluidRow(
+        # ---- (4a) LEFT: Advanced Mode + Sidebar
+        column(
+          width = 3,
+          div(
+            actionButton("advancedMode", "Advanced Mode", class = "advanced-mode-btn"),
+            uiOutput("advancedSidebarUI")
+          )
+        ),
+
+        # ---- (4b) RIGHT: Data Explorer Buttons + Dynamic Content
+        column(
+          width = 9,
+          div(
+            class = "data-explorer-frame",
+
+            # Header for the buttons area
+            div(class = "data-explorer-header", "Action Buttons"),
+
+            # Row of “blue‐button” actions
+            div(
+              class = "data-explorer-options",
+              div(
+                class = "explorer-buttons-row1",
+                style = "display:flex; gap:10px; margin-left:60px;",
+
+                # Manipulate dropdown
+                div(
+                  class = "dropdown-btn",
+                  actionButton("manipulateBtn", "Manipulate", class = "btn btn-primary btn-sm"),
+                  div(
+                    class = "dropdown-content",
+                    a("From raw sequence data", onclick = "Shiny.setInputValue('currentApp','rawSequence')"),
+                    a("Annotate",               onclick = "Shiny.setInputValue('currentApp','annotate')"),
+                    a("Prune",                  onclick = "Shiny.setInputValue('currentApp','prune')"),
+                    a("Filter/Sub-set",         onclick = "Shiny.setInputValue('currentApp','filter')")
+                  )
+                ),
+
+                # Overview dropdown
+                div(
+                  class = "dropdown-btn",
+                  actionButton("overviewBtn", "Overview", class = "btn btn-primary btn-sm"),
+                  div(
+                    class = "dropdown-content",
+                    a("Summary figures", onclick = "Shiny.setInputValue('currentApp','summary')"),
+                    a("Top Taxa",       onclick = "Shiny.setInputValue('currentApp','topTaxa')")
+                  )
+                ),
+
+                # Ordinate (single button)
+                actionButton("ordinateBtn", "Ordinate", class = "btn btn-primary btn-sm"),
+
+                # Statistics (single button)
+                actionButton("statisticsBtn", "Statistics", class = "btn btn-primary btn-sm"),
+
+                # Explore dropdown
+                div(
+                  class = "dropdown-btn",
+                  actionButton("exploreBtn", "Explore", class = "btn btn-primary btn-sm"),
+                  div(
+                    class = "dropdown-content",
+                    a("Research Qs",    onclick = "Shiny.setInputValue('currentApp','research')"),
+                    a("Taxonomy plots", onclick = "Shiny.setInputValue('currentApp','taxonomyPlots')")
+                  )
+                )
+              )
+            )
+          ),
+
+          # Region that will render whichever module/UI the user selects
+          div(
+            class = "main-frame",
+            uiOutput("dynamicContent")
+          )
+        )
+      ),
+
+      # ----------------------------------------------------------------------
+      # (5) JavaScript to toggle the nested “Explore Data” submenu in
+      #     Advanced Mode. The function name can be generic, because
+      #     we only need one copy here (no module scoping).
+      tags$script(HTML("
+        function toggleExploreSubmenu() {
+          var submenu = document.getElementById('exploreSubmenu');
+          var arrow   = document.querySelector('.arrow-down');
+          if (!submenu || !arrow) return;
+          if (submenu.style.display === 'none' || submenu.style.display === '') {
+            submenu.style.display = 'block';
+            arrow.classList.add('open');
+          } else {
+            submenu.style.display = 'none';
+            arrow.classList.remove('open');
+          }
+        }
+      "))
+      # ----------------------------------------------------------------------
+    ) # end of tagList() for all “Explorer” UI inside nav_panel
+  )   # end nav_panel("Explorer", …)
+)     # end page_navbar()
+```
+
+
+```{r 04-ui-navbar-notworking, echo=FALSE,eval=F}
+page_navbar(
+  theme = bs_theme(bootswatch = "flatly"),
+  nav_spacer(),
+
+  ## ---- right-side static links ------------------------------------------
+  nav_spacer(),
+  nav_item(a("About",     href = "about.html",     target = "_blank")),
+  nav_item(a("Tutorials", href = "tutorials.html", target = "_blank")),
+
+  ## ---- main workspace tab  (blue-button toolbar lives inside) ----------
+  nav_panel("Explorer", module_ui_map[["explorer"]]("explorer")),
+  # nav_panel("Explorer", 
+    # =========================================================================
+    #  (1) Hidden input to track currentApp:
+    div(style="display:none;", textInput("currentApp", NULL, value="home")),
+
+    # =========================================================================
+    #  (2) LOAD DATA SECTION
+    div(class="load-data-section", style="padding-left:130px;",
+        div(id="loadWrapper", style="position:relative;display:flex;align-items:center;gap:10px;",
+            tags$div(id="startHerePill", class="start-here-pill-left",
+                     icon("circle-arrow-right"), "Start Here"
+            ),
+            actionButton("loadData","Load Data", class="load-data-btn")
+        ),
+        uiOutput("dataSourceMenu"),
+        uiOutput("preloadedUI"),
+        uiOutput("importUI"),
+        uiOutput("loadedDatasetLabel")
+    ),
+
+    # =========================================================================
+    #  (3) OTHER NAV LINKS (Taxonomy / Group Testing / BFI)
+    div(class="nav-bar-with-dropdowns",
+        style="display:flex;justify-content:center;padding:10px;",
+        uiOutput("otherNavLinks")
+    ),
+
+    # =========================================================================
+    #  (4) MAIN LAYOUT: Sidebar + Main Frame
+    fluidRow(
+      # ---- (4a) LEFT: Advanced Mode + Sidebar
+      column(width=3,
+             div(
+               actionButton("advancedMode", "Advanced Mode", class="advanced-mode-btn"),
+               uiOutput("advancedSidebarUI")
+             )
+      ),
+
+      # ---- (4b) RIGHT: Data Explorer Buttons + Dynamic Content
+      column(width=9,
+             div(class="data-explorer-frame",
+                 div(class="data-explorer-header","Action Buttons"),
+                 div(class="data-explorer-options",
+                     div(class="explorer-buttons-row1",
+                         style="display:flex;gap:10px;margin-left:60px;",
+
+                         # Manipulate dropdown
+                         div(class="dropdown-btn",
+                             actionButton("manipulateBtn","Manipulate", class="btn btn-primary btn-sm"),
+                             div(class="dropdown-content",
+                                 a("From raw sequence data", onclick="Shiny.setInputValue('currentApp','rawSequence')"),
+                                 a("Annotate",             onclick="Shiny.setInputValue('currentApp','annotate')"),
+                                 a("Prune",                onclick="Shiny.setInputValue('currentApp','prune')"),
+                                 a("Filter/Sub‐set",       onclick="Shiny.setInputValue('currentApp','filter')")
+                             )
+                         ),
+
+                         # Overview dropdown
+                         div(class="dropdown-btn",
+                             actionButton("overviewBtn","Overview", class="btn btn-primary btn-sm"),
+                             div(class="dropdown-content",
+                                 a("Summary figures", onclick="Shiny.setInputValue('currentApp','summary')"),
+                                 a("Top Taxa",       onclick="Shiny.setInputValue('currentApp','topTaxa')")
+                             )
+                         ),
+
+                         # Ordinate (single button)
+                         actionButton("ordinateBtn","Ordinate", class="btn btn-primary btn-sm"),
+
+                         # Statistics (single button)
+                         actionButton("statisticsBtn","Statistics", class="btn btn-primary btn-sm"),
+
+                         # Explore dropdown
+                         div(class="dropdown-btn",
+                             actionButton("exploreBtn","Explore", class="btn btn-primary btn-sm"),
+                             div(class="dropdown-content",
+                                 a("Research Qs",     onclick="Shiny.setInputValue('currentApp','research')"),
+                                 a("Taxonomy plots",  onclick="Shiny.setInputValue('currentApp','taxonomyPlots')")
+                             )
+                         )
+                     )
+                 )
+             ),
+             # This is where we actually mount each UI (summary/html/module, etc.)
+             div(class="main-frame",
+                 uiOutput("dynamicContent")
+             )
+      )
+    ),
+
+    # =========================================================================
+    #  (5) JS to toggle the Explore submenu in advanced sidebar
+    tags$script(HTML("
+      function toggleExploreSubmenu() {
+        var submenu = document.getElementById('exploreSubmenu');
+        var arrow   = document.querySelector('.arrow-down');
+        if (!submenu || !arrow) return;
+        if (submenu.style.display === 'none' || submenu.style.display === '') {
+          submenu.style.display = 'block';
+          arrow.classList.add('open');
+        } else {
+          submenu.style.display = 'none';
+          arrow.classList.remove('open');
+        }
+      }
+    "))
+    # =========================================================================
+  ) # end nav_panel("Explorer", …)
+) # end page_navbar()
+```
+
+
+```{r 05-server, echo=FALSE,eval=F}
+## ------------------------------------------------------------------------
+##  Top–level SERVER
+##  • Runs the server logic for every module that exists in R/ (detected in
+##    Chunk 02) and passes the two linked phyloseq reactives.
+##  • Each module is responsible for respecting `values$data_loaded`,
+##    showing notifications, etc.
+## ------------------------------------------------------------------------
+invisible(
+  lapply(names(module_server_map), function(k) {
+    module_server_map[[k]](k, physeq_bac, physeq_fun)
+  })
+)
+
+```
+
+```{r 05-server-attempt2, echo=FALSE,eval=TRUE}
+values <- reactiveValues(
+  data_loaded  = FALSE,
+  current_app  = "home",
+  bac_data     = NULL,
+  fun_data     = NULL,
+  data_source  = NULL,
+  data_name    = NULL,
+  advanced_open = FALSE
+)
+
+# ─── Load‐Data observers ───────────────────────────────────────────────────
+observeEvent(input$loadData, {
+  shinyjs::hide("startHerePill")
+  values$data_loaded <- FALSE
+  values$data_source <- NULL
+  values$data_name   <- NULL
+  showNotification("Please choose a data source", type="message")
+})
+
+output$dataSourceMenu <- renderUI({
+  req(!values$data_loaded)
+  div(class="data-menu-panel", style="margin-top:5px;",
+      h4("Select Data Type:"),
+      actionButton("usePreloaded","Use Preloaded Data",  class="btn btn-outline-primary"),
+      actionButton("importData",  "Import My Data",     class="btn btn-outline-secondary")
+  )
+})
+observeEvent(input$usePreloaded, { values$data_source <- "preloaded" })
+observeEvent(input$importData,   { values$data_source <- "import" })
+
+output$preloadedUI <- renderUI({
+  req(!values$data_loaded, values$data_source == "preloaded")
+  div(class="data-menu-panel", style="margin-top:5px;",
+      h5("Available Preloaded Sets:"),
+      actionButton("loadRAM","RAM",        class="btn btn-success"),
+      actionButton("placeholderPreloaded","Placeholder", class="btn btn-secondary", disabled=TRUE)
+  )
+})
+observeEvent(input$loadRAM, {
+  withProgress(message="Loading RAM dataset…", value=0.5, {
+    values$bac_data <- readRDS("../data/PreloadedDatasets/RAM/Bac_wholecommunity.rds")
+    incProgress(0.3)
+    values$fun_data <- readRDS("../data/PreloadedDatasets/RAM/Fun_wholecommunity.rds")
+    incProgress(0.2)
+  })
+  values$data_loaded <- TRUE
+  values$data_name   <- "RAM"
+  showNotification("RAM datasets loaded successfully!", type="message")
+})
+
+output$loadedDatasetLabel <- renderUI({
+  req(values$data_name)
+  span(style="font-weight:600; color:#6c757d;", paste("Loaded:", values$data_name))
+})
+
+# ─── Advanced sidebar toggle ───────────────────────────────────────────────
+observeEvent(input$advancedMode, {
+  values$advanced_open <- !isTRUE(values$advanced_open)
+})
+output$advancedSidebarUI <- renderUI({
+  req(values$advanced_open)
+  div(style="margin-left:0px; margin-top:15px; width:100%; font-size:0.95rem;",
+      div(class="advanced-sidebar",
+          h4("Advanced Tools"),
+          a("Barplot of Taxa",      class="advanced-nav-item", onclick="Shiny.setInputValue('currentApp','barplot')"),
+          a("Layers",               class="advanced-nav-item", onclick="Shiny.setInputValue('currentApp','layers')"),
+          a("Associations",         class="advanced-nav-item", onclick="Shiny.setInputValue('currentApp','associations')"),
+          a("Explore Data",         class="advanced-nav-item", onclick="toggleExploreSubmenu()",
+            span(class="arrow-down","▼")
+          ),
+          div(id="exploreSubmenu", class="submenu",
+              a("Taxonomy",         class="advanced-nav-item", onclick="Shiny.setInputValue('currentApp','taxonomyExplore')"),
+              a("Metadata Testing",class="advanced-nav-item", onclick="Shiny.setInputValue('currentApp','metadataTesting')"),
+              a("Spatial Structuring", class="advanced-nav-item", onclick="Shiny.setInputValue('currentApp','spatialStructuring')")
+          )
+      )
+  )
+})
+
+# ─── “Other Nav Links” (Taxonomy / Group Testing / BFI) ───────────────────
+output$otherNavLinks <- renderUI({
+  link_class <- if (values$data_loaded) "nav-link" else "nav-link disabled"
+  div(style="
+        display:flex;
+        flex-direction:row;
+        gap:1.5rem;
+        justify-content:center;
+        align-items:center;
+        padding:0 !important;
+        margin:0;
+        line-height:1;
+  ",
+    span("Taxonomy",      class=link_class, style="padding:0.15rem 0!important;",
+         onclick=if (values$data_loaded) "Shiny.setInputValue('currentApp','taxonomy')" else NULL),
+    span("Group Testing", class=link_class, style="padding:0.15rem 0!important;",
+         onclick=if (values$data_loaded) "Shiny.setInputValue('currentApp','groupTesting')" else NULL),
+    span("BFI",           class=link_class, style="padding:0.15rem 0!important;",
+         onclick=if (values$data_loaded) "Shiny.setInputValue('currentApp','bfi')" else NULL)
+  )
+})
+
+# ─── “Shortcut” observers for the rollover buttons ─────────────────────────
+observeEvent(input$ordinateBtn, {
+  updateTextInput(session, "currentApp", value="ordinate")
+})
+observeEvent(input$statisticsBtn, {
+  updateTextInput(session, "currentApp", value="statistics")
+})
+
+# ─── renderUI({ … }) MUST define `app` before using it ──────────────────────
+output$dynamicContent <- renderUI({
+  app <- input$currentApp %||% "home"
+  if (identical(app, "home")) {
+    return(
+      div(class="content-placeholder",
+          h2("Welcome to the Microbiome Ontology Suite Data Explorer"),
+          p("Use the “Load Data” button above to begin."),
+          p("After loading, click “Overview → Summary of Data Loaded.”")
+      )
+    )
+  }
+  if (app %in% names(module_ui_map)) {
+    return(module_ui_map[[app]](app))
+  }
+  return(div("Module not found"))
+})
+
+# ─── Whenever input$currentApp changes, run its server logic ──────────────
+observe({
+  app <- input$currentApp %||% ""
+  if (identical(app,"") || identical(app,"home")) return()
+  if (app %in% names(module_srv_map)) {
+    module_srv_map[[app]](app, physeq_bac, physeq_fun)
+  }
+})
+```
+

@@ -40,7 +40,11 @@ vignettes/*.pdf
 .Renviron
 
 # pkgdown site
-docs/
+# docs/
+docs/*.pptx
+docs/exported_shinyapps/
+docs/runtime/
+ignore_charles/
 
 # translation temp files
 po/*~

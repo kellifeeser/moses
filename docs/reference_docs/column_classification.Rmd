@@ -1,0 +1,245 @@
+---
+title: "Column Type Classification in TRACTOR-objects"
+author: "Kelli Feeser"
+output: html_document
+---
+
+# Overview
+
+This document explains the purpose, implementation, and downstream usage of [**metadata column class assignment functionality**]{.underline} to store metadata classes in the `TRACTOR` object. This feature supports better statistical modeling, plotting, and distance-based analysis in microbiome analysis. Defining column types (classes) like `factor`, `ordered`, `numeric`, `character`, etc. is essential for downstream microbial community or ecology analyses.
+
+Defined column types are stored in `TRACTOR$attributes$config$column_classes`.
+
+------------------------------------------------------------------------
+
+# Why Classifying Metadata Columns Matters
+
+### Accurate column classification is critical for valid modeling, analyses, and interpretation
+
+In microbial analyses, the class of each metadata column is important for ensuring accurate interpretation and proper function of downstream modeling and analysis. Accurate column typing ensures valid modeling and interpretation, particularly for:
+
+-   **Statistical modeling**: (e.g., `lm()`, `lme4`, `adonis()`, `PERMANOVA`, `envfit`), etc.
+-   **Plotting & visualization**: plot aesthetics like color/shape/facet by group
+    -   **Ordination visualizations**: (e.g., shading color by factor order, scaling by numeric)
+-   **Richness & diversity summaries**
+-   **Distance matrix partitioning and stratification**
+
+### Incorrect column types can lead to:
+
+-   **Failed model assumptions**
+-   **Incorrect groupings**
+-   **Misleading statistical outputs**
+-   **Incongruent color mapping in plots**, i.e., the use of color palettes that do not effectively or accurately represent the underlying data.
+    -   *Examples*:
+        1.  [Rainbow/Jet palettes for continuous data]{.underline}: Rainbow or jet color palettes, often used as defaults, can be misleading when representing continuous data due to their uneven perceptual changes and potential to obscure information. Use of uneven color gradients can make certain parts of the data range appear more prominent than others, distorting the true representation of the data. These palettes are typically better suited for categorical data; however, in this package we avoid all uses of rainbow and default R color palettes.
+        2.  [Using sequential palettes for categorical data]{.underline}: Applying a single color in a variety of saturations or a gradient (sequential palette) for categorical variables can imply an order or hierarchy that does not exist in the data. This can undermine the numeric association and lead to misunderstandings. 
+        3.  [Use of low contrast and/or relying heavily on red/green distinctions]{.underline}, can be challenging or impossible for people with color vision deficiencies to interpret
+    -   This can lead to misleading interpretations and hinder effective communication of insights from the visualization.
+        -   The misrepresentation of data due to incongruent color mapping can lead to incorrect conclusions or assumptions. Studies have even shown that the wrong color choices in medical visualizations can significantly impact diagnostic accuracy [[cite!!!]{style="background-color: yellow; color: red;"}]
+        -   Inconsistent color use can exacerbate cognitive biases, like anchoring bias or confirmation bias, affecting how viewers perceive and interpret the data. 
+
+### Taking the time to thoughtfully classify your metadata columns will ensure:
+
+-   That the most effective color mapping is applied: By identifying whether the data source is categorical, sequential, or diverging allows our internal server logic to choose the most appropriate color palette
+-   Intentional consistency by use the same color consistently for the same category or variable across all visuals and legends
+-   Prioritized accessibility for to a broader audience
+-   **That you can create data visualizations that are clear, accurate, and impactful for all audiences**
+
+That said, this package was built with accessibility closely in mind. All color palette have been checked to be color-blind friendly. To help users generate clean, professional figures, [...]{style="color: red; background-color: yellow;"} We also avoid relying solely on color to convey information, and use other visual attributes including shapes and sizes.
+
+Our color-blind friendly customized color palettes use:
+
+-   **Qualitative palettes:** distinct hues for categories with no inherent order, limiting the palette size to ten colors or fewer.
+
+-   **Sequential palettes:** gradients of a single color to represent quantitative data from low to high values.
+
+-   **Diverging palettes:** two contrasting hues with a neutral midpoint to highlight extremes or deviations from a central value.
+
+------------------------------------------------------------------------
+
+# Types of Column Classes
+
+| Type | Needed for | Use Cases | R Class | Notes |
+|---------------|---------------|---------------|---------------|---------------|
+| **Factor** | Grouping in tests or plots | Discrete groups | `"factor"` | Unordered categories |
+| **Ordered** | Gradient groupings, thresholds | Ranked categories | `"ordered"` | e.g., Timepoint 1 \< 2 \< 3 |
+| **Numeric** | Distance, modeling, correlations | Continuous variables | `"numeric"` | Continuous values |
+| **Integer** | Counts | Count-like values | `"integer"` | Sometimes same as numeric |
+| **Character** | Labels, metadata display | Labels, text | `"character"` | Default if not specified |
+| **Date/Time** | Temporal testing and trends, time-series analyses | Sampling time, temporal patterns | (`POSIXct`, `Date`) | Special case for temporal classification |
+
+------------------------------------------------------------------------
+
+# TRACTOR$attributes$config\$column_classes
+
+Example:
+
+``` r
+TRACTOR$attributes$config$column_classes <- list(
+  sample_info = list(
+    HostID = "character",
+    Replicate = "factor"
+  ),
+  temporal = list(
+    Day = "ordered"
+  ),
+  environmental = list(
+    pH = "numeric",
+    Moisture = "numeric"
+  )
+)
+```
+
+------------------------------------------------------------------------
+
+# User-Interface (UI) Implementation: Step-by-Step
+
+## 1. How the App Lets Users Define Column Classes
+
+After categorization is saved, each category is looped over to show the variable name and the users can choose the column class from a dropdown menu: `"numeric"`, `"factor"`, `"ordered"`, `"character"`.
+
+UI Example (using `uiOutput`):
+
+``` r
+uiOutput("column_classification_ui")
+```
+
+## 2. Server: Renders Column Class Inputs (or Render Per-Category Column Class Pickers?)
+
+``` r
+output$column_classification_ui <- renderUI({
+  req(values$metadata_categorized)
+  all_inputs <- list()
+
+  for (cat in names(values$metadata_categorized)) {
+    df <- values$metadata_categorized[[cat]]
+    if (is.null(df)) next
+
+    cols <- setdiff(colnames(df), input$shared_key)
+    if (length(cols) == 0) next
+
+    inputs <- lapply(cols, function(col) {
+      selectInput(
+        inputId = paste0("colclass_", cat, "_", col),
+        label = paste0("[", cat, "] ", col),
+        choices = c("character", "numeric", "integer", "factor", "ordered"),
+        selected = "character"
+      )
+    })
+
+    all_inputs <- append(all_inputs, inputs)
+  }
+
+  tagList(
+    h4("Assign Column Types"),
+    all_inputs,
+    actionButton("save_column_classes", "Save Column Types", class = "btn btn-success mt-3")
+  )
+})
+```
+
+## 3. Column Class Selections Are Saved
+
+Column class selections are saved into `TRACTOR$attributes$config$column_classes`. Additionally, validation flags are enabled and `validation$column_classes_saved <- TRUE` is set.
+
+``` r
+observeEvent(input$save_column_classes, {
+  result <- list()
+
+  for (cat in names(values$metadata_categorized)) {
+    df <- values$metadata_categorized[[cat]]
+    if (is.null(df)) next
+
+    cols <- setdiff(colnames(df), input$shared_key)
+    result[[cat]] <- list()
+
+    for (col in cols) {
+      input_id <- paste0("colclass_", cat, "_", col)
+      result[[cat]][[col]] <- input[[input_id]] %||% "character"
+    }
+  }
+
+  values$column_classes <- result
+  TRACTOR$attributes$config$column_classes <- result
+  validation$column_classes_saved <- TRUE
+
+  showNotification("Column types saved.", type = "message")
+})
+```
+
+## 4. Coerce Metadata Columns Automatically (Optional Downstream Behavior?)
+
+If necessary, or if columns are undefined, this app will coerce metadata columns automatically with:
+
+```         
+for (cat in names(df_list)) {
+  df <- df_list[[cat]]
+  for (col in colnames(df)) {
+    class_type <- TRACTOR$attributes$config$column_classes[[cat]][[col]]
+    if (class_type == "factor") df[[col]] <- as.factor(df[[col]])
+    if (class_type == "ordered") df[[col]] <- factor(df[[col]], ordered = TRUE)
+    if (class_type == "numeric") df[[col]] <- as.numeric(df[[col]])
+    if (class_type == "integer") df[[col]] <- as.integer(df[[col]])
+  }
+  df_list[[cat]] <- df
+}
+```
+
+------------------------------------------------------------------------
+
+# Future Planned Enhancements
+
+## Prefill Suggested Classes
+
+Automatically suggest a class type based on data (enhanced renderUI() to suggest defaults by inspecting each column):
+
+``` r
+if (is.numeric(column_data)) default_class <- "numeric"
+if (all(column_data %% 1 == 0, na.rm = TRUE)) default_class <- "integer"
+if (length(unique(na.omit(column_data))) < 10 && is.character(column_data)) default_class <- "factor"
+```
+
+## Coercion Preview - Visualize which columns are coercible
+
+Optional UI output to flag uncoercible columns:
+
+``` r
+output$coercion_preview <- renderUI({
+  req(values$metadata_categorized, values$column_classes)
+  ...
+})
+```
+
+## Final Coercion
+
+Optional: Validate or Coerce Classes for Use (apply final classes before modeling)\
+Coercion can be applied when prepping a dataset for modeling:
+
+``` r
+for (cat in names(df_list)) {
+  df <- df_list[[cat]]
+  for (col in colnames(df)) {
+    class_type <- TRACTOR$attributes$config$column_classes[[cat]][[col]]
+    if (class_type == "factor") df[[col]] <- as.factor(df[[col]])
+    if (class_type == "ordered") df[[col]] <- factor(df[[col]], ordered = TRUE)
+    if (class_type == "numeric") df[[col]] <- as.numeric(df[[col]])
+    if (class_type == "integer") df[[col]] <- as.integer(df[[col]])
+  }
+  df_list[[cat]] <- df
+}
+```
+
+## Export all column class settings
+
+Export all column class settings with metadata for reproducibility ([.yaml or .json?]{style="background-color: yellow; color: red;"})
+
+------------------------------------------------------------------------
+
+# Summary
+
+| Step          | Description                                |
+|---------------|--------------------------------------------|
+| UI            | `uiOutput("column_classification_ui")`     |
+| Server render | `output$column_classification_ui`          |
+| Save logic    | `observeEvent(input$save_column_classes)`  |
+| Storage       | `TRACTOR$attributes$config$column_classes` |

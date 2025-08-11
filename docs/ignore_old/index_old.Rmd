@@ -1,0 +1,650 @@
+---
+title: "Data Explorer"
+output: 
+  html_document:
+    theme: flatly
+runtime: shiny
+---
+
+```{css, echo=FALSE}
+/* Custom CSS for the interface */
+.navbar-custom {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #dee2e6;
+  padding: 10px 20px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 10px;
+  width: 100%;
+}
+
+.navbar-links {
+  display: flex;
+  gap: 20px;
+}
+
+.navbar-links a {
+  color: #495057;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.navbar-links a:hover {
+  color: #007bff;
+}
+
+.load-data-section {
+  background-color: #f8f9fa;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.load-data-btn {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.load-data-btn:hover {
+  background-color: #0056b3;
+}
+
+.nav-bar-with-dropdowns {
+  background-color: #e9ecef;
+  padding: 10px 20px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  position: relative;
+}
+
+.nav-item {
+  position: relative;
+  display: inline-block;
+}
+
+.nav-link {
+  color: #6c757d;
+  text-decoration: none;
+  padding: 8px 12px;
+  border-radius: 3px;
+  transition: all 0.2s;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.nav-link:hover {
+  background-color: #dee2e6;
+  color: #495057;
+}
+
+.nav-link.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background-color: white;
+  min-width: 300px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+  z-index: 1000;
+  padding: 15px;
+  display: none;
+}
+
+.nav-item:hover .dropdown-menu {
+  display: block;
+}
+
+.data-explorer-dropdown {
+  min-width: 400px;
+}
+
+.easy-mode-section {
+  border: 2px solid #007bff;
+  border-radius: 6px;
+  padding: 15px;
+  margin-bottom: 15px;
+  background-color: #f8f9fa;
+}
+
+.easy-mode-title {
+  font-weight: bold;
+  color: #007bff;
+  margin-bottom: 10px;
+  font-size: 8px;
+}
+
+.easy-mode-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.easy-mode-checkbox {
+  margin-top: 10px;
+}
+
+.advanced-mode-section {
+  position: relative;
+  display: inline-block;
+}
+
+.advanced-mode-btn {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  width: 100%;
+}
+
+.advanced-mode-btn:hover {
+  background-color: #218838;
+}
+
+.advanced-sidebar {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 280px;
+  background-color: #6c757d;
+  color: white;
+  padding: 20px;
+  border-radius: 6px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1000;
+  display: none;
+}
+
+.advanced-mode-section:hover .advanced-sidebar {
+  display: block;
+}
+
+.advanced-sidebar h4 {
+  color: #28a745;
+  margin-bottom: 15px;
+  margin-top: 0;
+}
+
+.advanced-nav-item {
+  display: block;
+  color: #adb5bd;
+  text-decoration: none;
+  padding: 8px 0;
+  border-bottom: 1px solid #495057;
+  cursor: pointer;
+}
+
+.advanced-nav-item:hover {
+  color: white;
+}
+
+.submenu {
+  margin-left: 15px;
+  margin-top: 5px;
+}
+
+.submenu a {
+  font-size: 14px;
+  color: #6c757d;
+}
+
+.main-frame {
+  background-color: white;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  min-height: 600px;
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.content-placeholder {
+  text-align: center;
+  color: #6c757d;
+  margin-top: 100px;
+}
+
+.btn-primary {
+  background-color: #007bff;
+  border-color: #007bff;
+  margin: 2px;
+  font-size: 14px;
+}
+
+.dropdown-btn {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  background-color: white;
+  min-width: 160px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1001;
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+  top: 100%;
+  left: 0;
+}
+
+.dropdown-btn:hover .dropdown-content {
+  display: block;
+}
+
+.dropdown-content a {
+  color: #495057;
+  padding: 8px 12px;
+  text-decoration: none;
+  display: block;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.dropdown-content a:hover {
+  background-color: #f8f9fa;
+}
+
+#exploreSubmenu {
+  display: none;
+  margin-top: 5px;
+}
+
+.arrow-down {
+  display: inline-block;
+  margin-left: 5px;
+  transform: rotate(0deg);
+  transition: transform 0.2s;
+}
+
+.arrow-down.open {
+  transform: rotate(180deg);
+}
+```
+
+```{r setup, include=FALSE}
+library(shiny)
+library(DT)
+library(plotly)
+library(dplyr)
+```
+
+```{r, echo=FALSE}
+# UI Components
+fluidPage(
+  # Top Navigation Bar (Right Aligned)
+  div(class = "navbar-custom",
+    div(class = "navbar-links",
+      a("About", href = "#"),
+      a("Tutorials", href = "#")
+    )
+  ),
+  
+  # Load Data Section (Left side)
+  div(class = "load-data-section",
+    h4("Data Management"),
+    actionButton("loadData", "Load Data", class = "load-data-btn")
+  ),
+  
+  # Navigation Bar with Dropdowns
+  div(class = "nav-bar-with-dropdowns",
+    # Data Explorer with dropdown
+    div(class = "nav-item",
+      span(class = "nav-link", "Data Explorer"),
+      div(class = "dropdown-menu data-explorer-dropdown",
+        # Easy Mode Section
+        div(class = "easy-mode-section",
+          div(class = "easy-mode-title", "Easy Mode"),
+          div(class = "easy-mode-buttons",
+            # Manipulate Dropdown
+            div(class = "dropdown-btn",
+              actionButton("manipulateBtn", "Manipulate", class = "btn btn-primary btn-sm"),
+              div(class = "dropdown-content",
+                a("From raw sequence data", onclick = "Shiny.setInputValue('currentApp', 'rawSequence')"),
+                a("Annotate", onclick = "Shiny.setInputValue('currentApp', 'annotate')"),
+                a("Prune", onclick = "Shiny.setInputValue('currentApp', 'prune')"),
+                a("Filter/subset", onclick = "Shiny.setInputValue('currentApp', 'filter')")
+              )
+            ),
+            # Overview Dropdown
+            div(class = "dropdown-btn",
+              actionButton("overviewBtn", "Overview", class = "btn btn-primary btn-sm"),
+              div(class = "dropdown-content",
+                a("Summary figures", onclick = "Shiny.setInputValue('currentApp', 'summary')"),
+                a("Top Taxa", onclick = "Shiny.setInputValue('currentApp', 'topTaxa')")
+              )
+            ),
+            # Ordinate Button
+            actionButton("ordinateBtn", "Ordinate", class = "btn btn-primary btn-sm"),
+            # Explore Dropdown
+            div(class = "dropdown-btn",
+              actionButton("exploreBtn", "Explore", class = "btn btn-primary btn-sm"),
+              div(class = "dropdown-content",
+                a("Research-driven questions", onclick = "Shiny.setInputValue('currentApp', 'research')"),
+                a("Taxonomy plots", onclick = "Shiny.setInputValue('currentApp', 'taxonomyPlots')")
+              )
+            )
+          ),
+          div(class = "easy-mode-checkbox",
+            checkboxInput("useEasy", "Use Easy Data Explorer", value = FALSE)
+          )
+        ),
+        
+        # Advanced Mode Section
+        div(class = "advanced-mode-section",
+          actionButton("advancedMode", "Advanced Mode", class = "advanced-mode-btn"),
+          div(class = "advanced-sidebar",
+            h4("Advanced Tools"),
+            a("Barplot of Taxa", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'barplot')"),
+            a("Layers", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'layers')"),
+            a("Associations", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'associations')"),
+            a("Explore Data", class = "advanced-nav-item", onclick = "toggleExploreSubmenu()", 
+              span(class = "arrow-down", "▼")),
+            div(id = "exploreSubmenu", class = "submenu",
+              a("Taxonomy", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'taxonomyExplore')"),
+              a("Metadata Testing", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'metadataTesting')"),
+              a("Spatial Structuring", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'spatialStructuring')")
+            )
+          )
+        )
+      )
+    ),
+    
+    # Other navigation items
+    uiOutput("otherNavLinks")
+  ),
+  
+  # Main Frame
+  div(class = "main-frame",
+    uiOutput("dynamicContent")
+  ),
+  
+  # JavaScript for interactivity
+  tags$script(HTML("
+    function toggleExploreSubmenu() {
+      var submenu = document.getElementById('exploreSubmenu');
+      var arrow = document.querySelector('.arrow-down');
+      if (submenu.style.display === 'none' || submenu.style.display === '') {
+        submenu.style.display = 'block';
+        arrow.classList.add('open');
+      } else {
+        submenu.style.display = 'none';
+        arrow.classList.remove('open');
+      }
+    }
+    
+    // Keep dropdowns open when hovering over them
+    $('.nav-item').hover(
+      function() {
+        $(this).find('.dropdown-menu').show();
+      },
+      function() {
+        var self = this;
+        setTimeout(function() {
+          if (!$(self).is(':hover')) {
+            $(self).find('.dropdown-menu').hide();
+          }
+        }, 100);
+      }
+    );
+    
+    $('.dropdown-menu').hover(
+      function() {
+        $(this).show();
+      },
+      function() {
+        var self = this;
+        setTimeout(function() {
+          if (!$(self).closest('.nav-item').is(':hover')) {
+            $(self).hide();
+          }
+        }, 100);
+      }
+    );
+  "))
+)
+```
+
+```{r context="server", echo=FALSE}
+# Server Logic
+values <- reactiveValues(
+  data_loaded = FALSE,
+  current_app = "home"
+)
+
+# Other Navigation Links (Taxonomy, Group Testing, BFI)
+output$otherNavLinks <- renderUI({
+  link_class <- if(values$data_loaded) "nav-link" else "nav-link disabled"
+  
+  tagList(
+    span("Taxonomy", class = link_class, 
+         onclick = if(values$data_loaded) "Shiny.setInputValue('currentApp', 'taxonomy')" else ""),
+    span("Group Testing", class = link_class,
+         onclick = if(values$data_loaded) "Shiny.setInputValue('currentApp', 'groupTesting')" else ""),
+    span("BFI", class = link_class,
+         onclick = if(values$data_loaded) "Shiny.setInputValue('currentApp', 'bfi')" else "")
+  )
+})
+
+# Dynamic Content based on selected app
+output$dynamicContent <- renderUI({
+  current_app <- if(is.null(input$currentApp)) "home" else input$currentApp
+  
+  switch(current_app,
+    "home" = div(class = "content-placeholder",
+      h3("Welcome to Data Explorer Platform"),
+      p("Please load your data using the 'Load Data' button above to begin exploring."),
+      p("Once data is loaded, you can access all navigation options and use either Easy Mode or Advanced Mode for data exploration.")
+    ),
+    "rawSequence" = div(
+      h3("Raw Sequence Data Processing"),
+      p("Process and analyze raw sequence data..."),
+      verbatimTextOutput("placeholder1")
+    ),
+    "annotate" = div(
+      h3("Data Annotation"),
+      p("Annotate your dataset..."),
+      verbatimTextOutput("placeholder2")
+    ),
+    "prune" = div(
+      h3("Data Pruning"),
+      p("Prune your dataset..."),
+      verbatimTextOutput("placeholder3")
+    ),
+    "filter" = div(
+      h3("Filter/Subset Data"),
+      p("Filter and subset your data..."),
+      verbatimTextOutput("placeholder4")
+    ),
+    "summary" = div(
+      h3("Summary Figures"),
+      p("Generate summary visualizations..."),
+      plotOutput("summaryPlot")
+    ),
+    "topTaxa" = div(
+      h3("Top Taxa"),
+      p("View most abundant taxa..."),
+      DT::dataTableOutput("topTaxaTable")
+    ),
+    "research" = div(
+      h3("Research-driven Questions"),
+      p("Explore research-specific questions..."),
+      verbatimTextOutput("researchOutput")
+    ),
+    "taxonomyPlots" = div(
+      h3("Taxonomy Plots"),
+      p("Create taxonomy-specific visualizations..."),
+      plotOutput("taxonomyPlotsOutput")
+    ),
+    "barplot" = div(
+      h3("Barplot of Taxa"),
+      p("Create barplots showing taxonomic composition..."),
+      plotOutput("taxaBarplot")
+    ),
+    "layers" = div(
+      h3("Layers Analysis"),
+      p("Analyze data layers..."),
+      verbatimTextOutput("layersOutput")
+    ),
+    "associations" = div(
+      h3("Associations Analysis"),
+      p("Explore data associations..."),
+      verbatimTextOutput("associationsOutput")
+    ),
+    "taxonomyExplore" = div(
+      h3("Taxonomy Explorer"),
+      p("Explore taxonomic data in detail..."),
+      DT::dataTableOutput("taxonomyTable")
+    ),
+    "metadataTesting" = div(
+      h3("Metadata Testing"),
+      p("Statistical testing of metadata..."),
+      verbatimTextOutput("metadataOutput")
+    ),
+    "spatialStructuring" = div(
+      h3("Spatial Structuring"),
+      p("Analyze spatial structure in data..."),
+      verbatimTextOutput("spatialOutput")
+    ),
+    "taxonomy" = div(
+      h3("Taxonomy Overview"),
+      p("Quick taxonomy navigation content..."),
+      verbatimTextOutput("taxonomyOverview")
+    ),
+    "groupTesting" = div(
+      h3("Group Testing"),
+      p("Statistical testing between groups..."),
+      verbatimTextOutput("groupTestResults")
+    ),
+    "bfi" = div(
+      h3("BFI Analysis"),
+      p("Biological Feature Index analysis..."),
+      verbatimTextOutput("bfiResults")
+    ),
+    # Default case
+    div(class = "content-placeholder",
+      h3("Content Loading..."),
+      p("Selected application will appear here.")
+    )
+  )
+})
+
+# Observe Load Data button
+observeEvent(input$loadData, {
+  values$data_loaded <- TRUE
+  showNotification("Data loaded successfully!", type = "success")
+})
+
+# Observe Ordinate button
+observeEvent(input$ordinateBtn, {
+  updateTextInput(session, "currentApp", value = "ordinate")
+})
+
+# Placeholder outputs (replace with your actual Shiny apps)
+output$placeholder1 <- renderText("Raw sequence processing tools will appear here...")
+output$placeholder2 <- renderText("Data annotation interface will appear here...")
+output$placeholder3 <- renderText("Data pruning tools will appear here...")
+output$placeholder4 <- renderText("Data filtering interface will appear here...")
+output$researchOutput <- renderText("Research-driven analysis tools will appear here...")
+output$layersOutput <- renderText("Layer analysis tools will appear here...")
+output$associationsOutput <- renderText("Association analysis tools will appear here...")
+output$metadataOutput <- renderText("Metadata testing interface will appear here...")
+output$spatialOutput <- renderText("Spatial analysis tools will appear here...")
+
+output$summaryPlot <- renderPlot({
+  if(values$data_loaded) {
+    plot(1:10, 1:10, main = "Summary Plot", xlab = "X", ylab = "Y")
+  } else {
+    plot.new()
+    text(0.5, 0.5, "Load data first", cex = 2)
+  }
+})
+
+output$taxonomyPlotsOutput <- renderPlot({
+  if(values$data_loaded) {
+    pie(c(30, 25, 20, 15, 10), labels = c("Phylum A", "Phylum B", "Phylum C", "Phylum D", "Other"),
+        main = "Taxonomic Distribution")
+  } else {
+    plot.new()
+    text(0.5, 0.5, "Load data first", cex = 2)
+  }
+})
+
+output$taxaBarplot <- renderPlot({
+  if(values$data_loaded) {
+    barplot(c(5, 3, 8, 2), names.arg = c("Taxa A", "Taxa B", "Taxa C", "Taxa D"),
+            main = "Taxa Distribution", col = rainbow(4))
+  } else {
+    plot.new()
+    text(0.5, 0.5, "Load data first", cex = 2)
+  }
+})
+
+output$topTaxaTable <- DT::renderDataTable({
+  if(values$data_loaded) {
+    data.frame(
+      Rank = 1:5,
+      Taxa = c("Species A", "Species B", "Species C", "Species D", "Species E"),
+      Count = c(250, 200, 175, 150, 125),
+      Percentage = c(25.0, 20.0, 17.5, 15.0, 12.5)
+    )
+  } else {
+    data.frame(Message = "Please load data first")
+  }
+}, options = list(pageLength = 10))
+
+output$taxonomyTable <- DT::renderDataTable({
+  if(values$data_loaded) {
+    data.frame(
+      Taxa = c("Species A", "Species B", "Species C"),
+      Count = c(150, 200, 75),
+      Percentage = c(35.3, 47.1, 17.6)
+    )
+  } else {
+    data.frame(Message = "Please load data first")
+  }
+})
+
+output$taxonomyOverview <- renderText({
+  if(values$data_loaded) {
+    "Taxonomy overview data would appear here..."
+  } else {
+    "Please load data first to view taxonomy overview."
+  }
+})
+
+output$groupTestResults <- renderText({
+  if(values$data_loaded) {
+    "Group testing results would appear here..."
+  } else {
+    "Please load data first to perform group testing."
+  }
+})
+
+output$bfiResults <- renderText({
+  if(values$data_loaded) {
+    "BFI analysis results would appear here..."
+  } else {
+    "Please load data first to perform BFI analysis."
+  }
+})
+```

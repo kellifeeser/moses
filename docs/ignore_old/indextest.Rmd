@@ -1,0 +1,450 @@
+---
+title: "**M**icrobiome **O**ntology **S**uite for **E**xploration and **S**tatistics"
+output: 
+  html_document:
+    css: moses_index.css
+    theme: flatly
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(shiny)
+library(dplyr)
+library(phyloseq)
+library(shinyjs)
+library(bslib)
+
+# ─── 1a) Source every R file under R/modules ─────────────────────────────────
+module_paths <- list.files("../R/modules", 
+                           pattern = "\\.R$",
+                           recursive = TRUE,
+                           full.names = TRUE)
+cat("Sourcing these module files:\n")
+print(module_paths)
+lapply(module_paths, source)
+
+# ─── 1b) Find all *_ui and *_srv functions in the global environment ─────────
+all_ui_fns  <- ls(pattern = "_ui$", envir = .GlobalEnv)
+all_srv_fns <- ls(pattern = "_srv$", envir = .GlobalEnv)
+
+# Keep only the names that actually point to functions
+all_ui_fns  <- Filter(function(x) is.function(get(x, envir = .GlobalEnv)),  all_ui_fns)
+all_srv_fns <- Filter(function(x) is.function(get(x, envir = .GlobalEnv)), all_srv_fns)
+
+cat("Detected UI functions:\n");    print(all_ui_fns)
+cat("Detected server functions:\n"); print(all_srv_fns)
+
+# Strip off the “_ui” / “_srv” suffix so that
+#   "overview_summary_ui" → key "overview_summary"
+#   "overview_summary_srv" → key "overview_summary"
+keys_ui  <- sub("_ui$",  "", all_ui_fns)
+keys_srv <- sub("_srv$", "", all_srv_fns)
+
+module_ui_map  <- setNames(
+  lapply(all_ui_fns,  function(fn) get(fn, envir = .GlobalEnv)),
+  keys_ui
+)
+module_srv_map <- setNames(
+  lapply(all_srv_fns, function(fn) get(fn, envir = .GlobalEnv)),
+  keys_srv
+)
+
+cat("Final module_ui_map keys:\n");  print(names(module_ui_map))
+cat("Final module_srv_map keys:\n"); print(names(module_srv_map))
+
+# ─── 1c) Create two reactiveVal holders for your phyloseq objects ────────────
+physeq_bac <- reactiveVal(NULL)
+physeq_fun <- reactiveVal(NULL)
+```
+
+```{r top-navbar, echo=FALSE, eval=T}
+# bs_page <- bslib::page_navbar(
+#   # title  = span("MOSES", style = "font-style:italic;"),
+#   theme  = bs_theme(bootswatch = "flatly"),
+#   nav_spacer(),              # pushes items to the right
+#   nav_item(a("About",      href = "about.html", target = "_blank")),
+#   nav_item(a("Tutorials",  href = "tutorials.html", target = "_blank")),
+#   nav_item(a("Site Map",  href = "sitemap.html", target = "_blank"))
+# )
+
+
+link_comingsoon <- tags$a(
+  span(
+    icon("hourglass-half"), "Coming Soon", 
+    class = "nav-link disabled"
+))
+
+link_sitemap <- tags$a(
+  span(
+    icon("hourglass-half"), "Site Map", 
+    class = "nav-link disabled"
+))
+
+
+bs_page <- page_navbar(
+  id = "topnav",            # <-- assign an ID
+  theme = bs_theme(bootswatch = "flatly"),
+  
+  # ─── First tab(s) ───────────────────────────────────────────────
+  # nav_panel("Home", div("Welcome to the home page.")),
+  # nav_panel("One",  div("Content for tab One.")),
+  # nav_panel("Two",  div("Content for tab Two.")),
+  # nav_panel("Three",div("Content for tab Three.")),
+
+  nav_spacer(),  # push everything below to the right
+  
+  nav_item(a("About", href = "about.html", target = "_blank")),
+  
+    # ─── Tutorials dropdown menu ─────────────────────────────────
+  nav_menu(
+    title = "Tutorials", 
+    align = "right",
+    nav_item(
+      tags$a(
+        icon("book-open"), "Getting Started", 
+        href = "tutorials/getting-started.html", 
+        target = "_blank")
+    ),
+    # ── Another real link:
+    nav_item(
+      tags$a(
+        icon("chalkboard-teacher"), "Advanced Analysis", 
+        href = "tutorials/advanced-analysis.html", 
+        target = "_blank")
+    ),
+    # ── A placeholder/disabled link:
+    #    We wrap it in a <span> with class="nav-link disabled" so it renders greyed-out.
+    nav_item(
+      span(
+        icon("hourglass-half"), "Coming Soon", 
+        class = "nav-link disabled")
+      )
+  ),
+
+  
+  nav_item(link_sitemap),
+  
+  nav_menu(
+    title = "Publications",
+    align = "right",
+    nav_item(link_comingsoon),
+    nav_item(link_comingsoon)
+  )
+)
+```
+
+
+```{r ui, echo=FALSE}
+fluidPage(
+  useShinyjs(),
+  
+  # Hidden tracker for which module is active:
+  div(style = "display:none;",
+      textInput("currentApp", NULL, value = "home")
+  ),
+  
+  # ─── Top navigation bar (bs_page) ───────────────────────────────────
+  bs_page,
+  
+  # ─── Load‐Data section ─────────────────────────────────────────────
+  div(class = "load-data-section", style = "padding-left: 130px;",
+      div(id = "loadWrapper",
+          style = "position: relative; display: flex; align-items: center; gap: 10px;",
+          tags$div(id = "startHerePill", class = "start-here-pill-left",
+                   icon("circle-arrow-right"), "Start Here"),
+          actionButton("loadData", "Load Data", class = "load-data-btn")
+      ),
+      uiOutput("dataSourceMenu"),
+      uiOutput("preloadedUI"),
+      uiOutput("importUI"),
+      uiOutput("loadedDatasetLabel")
+  ),
+  
+  # ─── “Other Nav Links” (Taxonomy / Group Testing / BFI) ─────────────
+  div(class = "nav-bar-with-dropdowns",
+      style = "display: flex; justify-content: center; padding: 10px;",
+      uiOutput("otherNavLinks")
+  ),
+  
+  # ─── Main layout: left sidebar + right “action buttons” & dynamic content ─
+  fluidRow(
+    column(width = 3,
+           div(
+             actionButton("advancedMode", "Advanced Mode", class = "advanced-mode-btn"),
+             uiOutput("advancedSidebarUI")
+           )
+    ),
+    column(width = 9,
+           div(class = "data-explorer-frame",
+               div(class = "data-explorer-header", "Action Buttons"),
+               div(class = "data-explorer-options",
+                   div(class = "explorer-buttons-row1",
+                       style = "display: flex; gap: 10px; margin-left: 60px;",
+                       
+                       # ─ Manipulate dropdown ─
+                       div(class = "dropdown-btn",
+                           actionButton("manipulateBtn", "Manipulate", class = "btn btn-primary btn-sm"),
+                           div(class = "dropdown-content",
+                               a("From raw sequence data", onclick = "Shiny.setInputValue('currentApp', 'rawSequence')"),
+                               a("Annotate",              onclick = "Shiny.setInputValue('currentApp', 'annotate')"),
+                               a("Prune",                 onclick = "Shiny.setInputValue('currentApp', 'prune')"),
+                               a("Filter/subset",         onclick = "Shiny.setInputValue('currentApp', 'filter')")
+                           )
+                       ),
+                       
+                       # ─ Overview dropdown ─
+                       div(class = "dropdown-btn",
+                           actionButton("overviewBtn", "Overview", class = "btn btn-primary btn-sm"),
+                           div(class = "dropdown-content",
+                               a("Summary of Data Loaded", onclick = "Shiny.setInputValue('currentApp','overview_summary')"),
+                               span("Summary figures", class = "dropdown-item disabled"),
+                               span("Top Taxa",        class = "dropdown-item disabled")
+                           )
+                       ),
+                       
+                       # ─ Ordinate button ─
+                       actionButton("ordinateBtn", "Ordinate",      class = "btn btn-primary btn-sm"),
+                       
+                       # ─ Statistics dropdown ─
+                       div(class = "dropdown-btn",
+                           actionButton("statisticsBtn", "Statistics", class = "btn btn-primary btn-sm"),
+                           div(class = "dropdown-content",
+                               a("PERMANOVA", onclick = "Shiny.setInputValue('currentApp','permanova')"),
+                               a("ANOSIM",    onclick = "Shiny.setInputValue('currentApp','anosim')"),
+                               a("Adonis",    onclick = "Shiny.setInputValue('currentApp','adonis')")
+                           )
+                       ),
+                       
+                       # ─ Explore dropdown ─
+                       div(class = "dropdown-btn",
+                           actionButton("exploreBtn", "Explore", class = "btn btn-primary btn-sm"),
+                           div(class = "dropdown-content",
+                               a("Research-driven questions", onclick = "Shiny.setInputValue('currentApp','research')"),
+                               a("Taxonomy plots",           onclick = "Shiny.setInputValue('currentApp','taxonomyPlots')")
+                           )
+                       )
+                   )
+               )
+           ),
+           div(class = "main-frame",
+               uiOutput("dynamicContent")
+           )
+    )
+  ),
+  
+  # ─── JS hook for showing/hiding Advanced “Explore Data” submenu ─
+  tags$script(HTML("
+    function toggleExploreSubmenu() {
+      var submenu = document.getElementById('exploreSubmenu');
+      var arrow   = document.querySelector('.arrow-down');
+      if (!submenu || !arrow) return;
+      if (submenu.style.display === 'none' || submenu.style.display === '') {
+        submenu.style.display = 'block';
+        arrow.classList.add('open');
+      } else {
+        submenu.style.display = 'none';
+        arrow.classList.remove('open');
+      }
+    }
+  "))
+)
+```
+
+
+```{r server, context="server", echo=FALSE}
+values <- reactiveValues(
+  data_loaded  = FALSE,
+  current_app  = "home",
+  bac_data     = NULL,
+  fun_data     = NULL,
+  data_source  = NULL,  # "preloaded" or "import"
+  data_name    = NULL,  # e.g. "RAM"
+  advanced_open = FALSE
+)
+
+#
+# --- (A) Hide “Start Here” pill and force user to pick a data source ----
+#
+observeEvent(input$loadData, {
+  shinyjs::hide("startHerePill")
+  # values$data_loaded <- reactiveVal(FALSE)
+  values$data_source <- NULL
+  values$data_name   <- NULL
+  showNotification("Please choose a data source", type = "message")
+})
+
+
+#
+# --- (B) Show “Use Preloaded” vs “Import My Data” ---------------
+#
+output$dataSourceMenu <- renderUI({
+  req(!values$data_loaded)
+  div(class = "data-menu-panel", style = "margin-top: 5px;",
+      h4("Select Data Type:"),
+      actionButton("usePreloaded", "Use Preloaded Data",   class = "btn btn-outline-primary"),
+      actionButton("importData",   "Import My Data",       class = "btn btn-outline-secondary")
+  )
+})
+
+output$preloadedUI <- renderUI({
+  req(!values$data_loaded, values$data_source == "preloaded")
+  div(class="data-menu-panel", style="margin-top:5px;",
+      h5("Available Preloaded Sets:"),
+      actionButton("loadRAM", "RAM",        class="btn btn-success"),
+      actionButton("placeholderPreloaded", "Placeholder", class="btn btn-secondary", disabled = TRUE)
+  )
+})
+
+output$importUI <- renderUI({
+  req(!values$data_loaded, values$data_source == "import")
+  div(class = "data-menu-panel", style = "margin-top: 10px;",
+      h5("My Data Import Format:"),
+      actionButton("importExcel",   "Excel formatted (.csv)", class = "btn btn-secondary", disabled = TRUE),
+      actionButton("importQIIME",   "QIIME formatted",         class = "btn btn-secondary", disabled = TRUE),
+      actionButton("importDADA2",   "dada2 formatted",         class = "btn btn-secondary", disabled = TRUE),
+      actionButton("importPhyloseq","phyloseq object",         class = "btn btn-secondary", disabled = TRUE)
+  )
+})
+
+observeEvent(input$usePreloaded, {
+  values$data_source <- "preloaded"
+})
+observeEvent(input$importData, {
+  values$data_source <- "import"
+})
+
+#
+# --- (C) Actually load the RAM data when they click “RAM” --------------
+#
+observeEvent(input$loadRAM, {
+  withProgress(message = "Loading RAM dataset...", value = 0.5, {
+    values$bac_data <- readRDS("../data/PreloadedDatasets/RAM/Bac_wholecommunity.rds")
+    incProgress(0.3)
+    values$fun_data <- readRDS("../data/PreloadedDatasets/RAM/Fun_wholecommunity.rds")
+    incProgress(0.2)
+  })
+  values$data_loaded <- TRUE
+  values$data_name   <- "RAM"
+  showNotification("RAM datasets loaded successfully!", type = "message")
+})
+
+output$loadedDatasetLabel <- renderUI({
+  req(values$data_name)
+  span(style = "font-weight: 600; color: #6c757d;",
+       paste("Loaded:", values$data_name))
+})
+
+#
+# --- (D) Advanced sidebar toggle ----------------------------------------
+#
+observeEvent(input$advancedMode, {
+  values$advanced_open <- !isTRUE(values$advanced_open)
+})
+
+output$advancedSidebarUI <- renderUI({
+  req(values$advanced_open)
+  div(style = "margin-left: 0px; margin-top: 15px; width: 100%; font-size:0.95rem;",
+      div(class = "advanced-sidebar",
+          h4("Advanced Tools"),
+          a("Barplot of Taxa",      class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp','barplot')"),
+          a("Layers",               class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp','layers')"),
+          a("Associations",         class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp','associations')"),
+          a("Explore Data",         class = "advanced-nav-item", onclick = "toggleExploreSubmenu()",
+            span(class = "arrow-down", "▼")
+          ),
+          div(id = "exploreSubmenu", class = "submenu",
+              a("Taxonomy",         class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp','taxonomyExplore')"),
+              a("Metadata Testing",class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp','metadataTesting')"),
+              a("Spatial Structuring", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp','spatialStructuring')")
+          )
+      )
+  )
+})
+
+#
+# --- (E) “Other Nav Links” (the row with Taxonomy / Group Testing / BFI) ----
+#
+output$otherNavLinks <- renderUI({
+  link_class <- if (values$data_loaded) "nav-link" else "nav-link disabled"
+  div(style = "
+        display: flex;
+        flex-direction: row;
+        gap: 1.5rem;
+        justify-content: center;
+        align-items: center;
+        padding: 0 !important;
+        margin: 0;
+        line-height: 1;        
+        ",
+      span("Taxonomy",      class = link_class, style="padding:0.15rem 0 !important;",
+           onclick = if (values$data_loaded) "Shiny.setInputValue('currentApp','taxonomy')" else NULL
+      ),
+      span("Group Testing", class = link_class, style="padding:0.15rem 0 !important;",
+           onclick = if (values$data_loaded) "Shiny.setInputValue('currentApp','groupTesting')" else NULL
+      ),
+      span("BFI",           class = link_class, style="padding:0.15rem 0 !important;",
+           onclick = if (values$data_loaded) "Shiny.setInputValue('currentApp','bfi')" else NULL
+      )
+  )
+})
+
+#
+# --- (F) “Action Button” shortcuts which set currentApp --------------
+#
+observeEvent(input$ordinateBtn, {
+  updateTextInput(session, "currentApp", value = "ordinate")
+})
+observeEvent(input$statisticsBtn, {
+  updateTextInput(session, "currentApp", value = "statistics")
+})
+
+#
+# --- (G) The heart of the problem: renderUI({ … }) must DEFINE `app` FIRST!  ----
+#
+output$dynamicContent <- renderUI({
+  # 1) always start by grabbing/defining `app`
+  app <- input$currentApp %||% "home"
+
+  # 2) “Home” screen if app == "home"
+  if (identical(app, "home")) {
+    return(
+      div(class = "content-placeholder",
+          h2("Welcome to the Microbiome Ontology Suite Data Explorer"),
+          p("Use the ", strong("Load Data"), " button above to begin."),
+          p("Once your data are loaded, you can click “Overview → Summary of Data Loaded” to see your summary tables.")
+      )
+    )
+  }
+
+  # 3) If `app` exists in module_ui_map, call that function:
+  if (app %in% names(module_ui_map)) {
+    # e.g. app = "overview_summary"
+    return(module_ui_map[[app]](app))
+  }
+
+  # 4) Otherwise, fall back to your old `modules` tibble logic if you still need it:
+  r <- modules %>% filter(key == app)
+  if (nrow(r) == 0) {
+    return(div("Module not found"))
+  }
+  if (!is.na(r$html)) {
+    return(includeHTML(r$html))
+  }
+
+  # 5) If we reach here, it means there was no pre-rendered HTML
+  #    and no UI module. We can try to call module_ui_map[[app]] again,
+  #    but it will probably fail (that’s fine)—or you can show a placeholder:
+  return(div("No UI available for this module yet."))
+})
+
+#
+# --- (H) Finally: whenever input$currentApp changes, run the matching server logic
+#
+observe({
+  app <- input$currentApp %||% ""
+  if (app == "" || identical(app, "home")) return()
+  if (app %in% names(module_srv_map)) {
+    module_srv_map[[app]](app, physeq_bac, physeq_fun)
+  }
+})
+```

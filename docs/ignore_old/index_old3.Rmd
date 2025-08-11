@@ -1,0 +1,353 @@
+---
+title: "Data Explorer"
+output: 
+  html_document:
+    theme: flatly
+runtime: shiny
+---
+
+```{css, echo=FALSE}
+/* Custom CSS for the interface */
+.navbar-custom {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #dee2e6;
+  padding: 10px 20px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 10px;
+  width: 100%;
+}
+
+.navbar-links {
+  display: flex;
+  gap: 20px;
+}
+
+.navbar-links a {
+  color: #495057;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.navbar-links a:hover {
+  color: #007bff;
+}
+
+.load-data-section {
+  background-color: #f8f9fa;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.load-data-btn {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.load-data-btn:hover {
+  background-color: #0056b3;
+}
+
+.nav-bar-with-dropdowns {
+  background-color: #e9ecef;
+  padding: 10px 20px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  position: relative;
+}
+
+.nav-item {
+  position: relative;
+  display: inline-block;
+}
+
+.nav-link {
+  color: #6c757d;
+  text-decoration: none;
+  padding: 8px 12px;
+  border-radius: 3px;
+  transition: all 0.2s;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.nav-link:hover {
+  background-color: #dee2e6;
+  color: #495057;
+}
+
+.nav-link.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background-color: white;
+  min-width: 300px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+  z-index: 1000;
+  padding: 15px;
+  display: none;
+}
+
+.nav-item:hover .dropdown-menu {
+  display: block;
+}
+
+.data-explorer-dropdown {
+  min-width: 400px;
+}
+
+.easy-mode-section {
+  border: 2px solid #007bff;
+  border-radius: 6px;
+  padding: 15px;
+  margin-bottom: 15px;
+  background-color: #f8f9fa;
+}
+
+.easy-mode-title {
+  font-weight: bold;
+  color: #007bff;
+  margin-bottom: 10px;
+  font-size: 16px;
+}
+
+.easy-mode-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.easy-mode-checkbox {
+  margin-top: 10px;
+}
+
+.advanced-mode-section {
+  position: relative;
+  display: inline-block;
+}
+
+.advanced-mode-btn {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  width: 100%;
+}
+
+.advanced-mode-btn:hover {
+  background-color: #218838;
+}
+
+.advanced-sidebar {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 280px;
+  background-color: #6c757d;
+  color: white;
+  padding: 20px;
+  border-radius: 6px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1000;
+  display: none;
+}
+
+.advanced-mode-section:hover .advanced-sidebar {
+  display: block;
+}
+
+.advanced-sidebar h4 {
+  color: #28a745;
+  margin-bottom: 15px;
+  margin-top: 0;
+}
+
+.advanced-nav-item {
+  display: block;
+  color: #adb5bd;
+  text-decoration: none;
+  padding: 8px 0;
+  border-bottom: 1px solid #495057;
+  cursor: pointer;
+}
+
+.advanced-nav-item:hover {
+  color: white;
+}
+
+.submenu {
+  margin-left: 15px;
+  margin-top: 5px;
+}
+
+.submenu a {
+  font-size: 14px;
+  color: #6c757d;
+}
+
+.main-frame {
+  background-color: white;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  min-height: 600px;
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.content-placeholder {
+  text-align: center;
+  color: #6c757d;
+  margin-top: 100px;
+}
+
+.btn-primary {
+  background-color: #007bff;
+  border-color: #007bff;
+  margin: 2px;
+  font-size: 14px;
+}
+
+.dropdown-btn {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  background-color: white;
+  min-width: 160px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1001;
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+  top: 100%;
+  left: 0;
+}
+
+.dropdown-btn:hover .dropdown-content {
+  display: block;
+}
+
+.dropdown-content a {
+  color: #495057;
+  padding: 8px 12px;
+  text-decoration: none;
+  display: block;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.dropdown-content a:hover {
+  background-color: #f8f9fa;
+}
+
+#exploreSubmenu {
+  display: none;
+  margin-top: 5px;
+}
+
+.arrow-down {
+  display: inline-block;
+  margin-left: 5px;
+  transform: rotate(0deg);
+  transition: transform 0.2s;
+}
+
+.arrow-down.open {
+  transform: rotate(180deg);
+}
+```
+
+```{r setup, include=FALSE}
+library(shiny)
+library(DT)
+library(plotly)
+library(dplyr)
+```
+
+
+```{r, echo=FALSE}
+fluidPage(
+  div(class = "navbar-custom",
+    div(class = "navbar-links",
+      a("About", href = "#"),
+      a("Tutorials", href = "#")
+    )
+  ),
+  div(class = "load-data-section",
+    h4(" "),
+    actionButton("loadData", "Load Data", class = "load-data-btn")
+  ),
+  div(class = "nav-bar-with-dropdowns",
+    div(class = "nav-link", style = "font-size: 20px; font-weight: bold; color: #343a40; padding-right: 30px;", "Data Explorer"),
+    div(class = "nav-item",
+      span(class = "nav-link", "Manipulate"),
+      div(class = "dropdown-content",
+        a("From raw", onclick = "Shiny.setInputValue('currentApp', 'rawSequence')"),
+        a("Annotate", onclick = "Shiny.setInputValue('currentApp', 'annotate')"),
+        a("Prune", onclick = "Shiny.setInputValue('currentApp', 'prune')"),
+        a("Filter/subset", onclick = "Shiny.setInputValue('currentApp', 'filter')")
+      )
+    ),
+    div(class = "nav-item",
+      span(class = "nav-link", "Overview"),
+      div(class = "dropdown-content",
+        a("Summary figures", onclick = "Shiny.setInputValue('currentApp', 'summary')"),
+        a("Top Taxa", onclick = "Shiny.setInputValue('currentApp', 'topTaxa')")
+      )
+    ),
+    div(class = "nav-item",
+      span(class = "nav-link", onclick = "Shiny.setInputValue('currentApp', 'ordinate')", "Ordinate")
+    ),
+    div(class = "nav-item",
+      span(class = "nav-link", onclick = "Shiny.setInputValue('currentApp', 'statistics')", "Statistics")
+    ),
+    div(class = "nav-item",
+      span(class = "nav-link", "Explore"),
+      div(class = "dropdown-content",
+        a("Research-driven questions", onclick = "Shiny.setInputValue('currentApp', 'research')"),
+        a("Taxonomy plots", onclick = "Shiny.setInputValue('currentApp', 'taxonomyPlots')")
+      )
+    ),
+    div(class = "advanced-mode-section",
+      actionButton("advancedMode", "Use Advanced Mode", class = "advanced-mode-btn"),
+      div(class = "advanced-sidebar",
+        h4("Advanced Tools"),
+        a("Barplot of Taxa", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'barplot')"),
+        a("Layers", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'layers')"),
+        a("Associations", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'associations')"),
+        a("Explore Data", class = "advanced-nav-item", onclick = "toggleExploreSubmenu()", 
+          span(class = "arrow-down", "▼")),
+        div(id = "exploreSubmenu", class = "submenu",
+          a("Taxonomy", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'taxonomyExplore')"),
+          a("Metadata Testing", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'metadataTesting')"),
+          a("Spatial Structuring", class = "advanced-nav-item", onclick = "Shiny.setInputValue('currentApp', 'spatialStructuring')")
+        )
+      )
+    )
+  )
+)
+```

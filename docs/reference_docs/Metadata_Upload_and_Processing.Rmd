@@ -1,0 +1,1567 @@
+---
+title: "Metadata Uploading and Processing and Column Classification in the `moses` webportal"
+subtitle: "Metadata file(s) upload, sampling matching and resolution, column categorization and classification, data object storage, and validation"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+# Overview
+
+This document tracks all implemented features and internal logic for metadata validation, classification, and integration into the `TRACTOR` object within the MOSES R/Shiny app framework.
+
+This supports the workflows within `moses` and interfaces with microbial community ecology analytic code in `pasturetools`.
+
+### Purpose
+
+These features are designed to support metadata uploading processing for microbial community data in a shinylive app context — specifically for dual-kingdom (16S + ITS) studies.
+
+Goals include:
+
+-   Aligning sample metadata across kingdoms
+-   Letting users categorize and classify metadata columns to optimize downstream modeling, ordination, and dissimilarity computation
+-   Embedding validated metadata into a structured `TRACTOR` object
+
+### Workflow Subsections
+
+|  |  |  |  |  |
+|---------------|---------------|---------------|---------------|---------------|
+| **Step** | **Feature** | **Flag / Storage** | **UI Finished?** | **Server Finished?** |
+| 1 | Upload Metadata File(s) | values\$metadata\_\* | ✅ | ✅ |
+| 2 | Validate Key Columns | validation\$file_uploaded etc. | ✅ | ✅ |
+| 4 | Resolution Strategy Applied | observeEvent(input\$resolve_mismatch) | ✅ | ✅ |
+| 5 | Categorization Drag+Drop | values\$metadata_categorized | ✅ | ✅ |
+| 6 | GPS structure + format | gps_structure, gps_format | ✅ | ✅ |
+| 7 | Column type classification | column_classes, UI selectInput | ✅ | ✅ |
+| 8 | Save all into TRACTOR | TRACTOR\$attributes[...] | 🚧 if not done, do it now | 🚧 if not done, do it now |
+
+------------------------------------------------------------------------
+
+# 1. Uploading Sample Metadata File(s) and Configuration
+
+This section allows users to upload one or two microbiome metadata files for single or dual kingdom processing. Metadata must contain sample IDs and a shared key to link kingdoms (if dual). Files can be provided as a single combined file or as two separate files, one for each kingdom. This stage sets up all downstream processing including validation, sample matching, categorization, and integration into the TRACTOR object.
+
+## Purpose
+
+This section handles the uploading and validation of microbiome sample metadata files for single- or dual-kingdom processing. It collects key columns that define sample identity and inter-table joining, providing the structural foundation for all downstream steps (e.g., sample matching, metadata categorization, distance stratification).
+
+## Overview
+
+-   Allows the user to upload one or two metadata files depending on whether they are analyzing one or both kingdoms (16S and 18S).
+-   Prompts for a shared key and per-kingdom sample ID column names.
+-   Supports a labeled single kingdom metadata workflow if only one file is provided.
+-   Prepares the metadata for downstream processing steps such as sample matching, resolution, categorization, and classification.
+
+## Brief Details
+
+This section begins with inputs for kingdom mode (single vs. dual) and file mode (one vs. two files for dual). It collects the shared key and sample ID columns per kingdom. Users uploading a single kingdom must also label the kingdom type (Bacteria/Archaea or Fungi).
+
+### Data Types Supported
+
+-   Single Kingdom
+-   Dual Kingdoms:
+    -   One file with paired data
+    -   Two separate files
+
+### Required Inputs and Acceptable Formats
+
+-   File input formats currently supported: CSV and TXT
+-   `shared_key`: column to join metadata tables
+-   `sample_col_*`: per-kingdom column matching OTU/ASV table rownames
+
+### Subsections
+
+-   Single vs. Dual Kingdom selection
+-   File mode (1 file vs 2 files)
+-   Per-kingdom sample ID input
+-   Shared key input
+-   Labeling for single kingdom
+-   File upload inputs
+-   Metadata previews
+-   File validation summary
+-   Validation flags
+
+### Key Features
+
+#### Summary UI and Logic
+
+-   Shows kingdom selection radioButtons
+-   Prompts for sample ID column(s) and shared key
+-   Upload area styled with dashed borders and hover effects
+-   Dynamically shows 1 or 2 file upload inputs depending on selected mode
+-   Previews each file in a stylized box with summary info and highlighting
+
+#### Key UI Elements
+
+-   `radioButtons("kingdom_mode", ...)`
+-   `radioButtons("dual_file_mode", ...)`
+-   `textInput("shared_key", ...)`
+-   `textInput("sample_col_single")`, `sample_col_bacteria`, `sample_col_fungi`
+-   `fileInput("metadata_upload_*")`
+-   `uiOutput("file_preview_*")`
+-   `output$file_validation_feedback`
+
+#### Key Server Reactivity
+
+-   `observeEvent(input$metadata_upload_*)` — parse uploaded files
+-   `observe({ ... })` — validate file structure and key columns
+-   `output$file_preview_*` — display preview tables with color-coded columns
+-   `values$metadata_*`: stores uploaded data
+-   `values$kingdom_label` — stores labeled single kingdom type
+-   `validation$file_uploaded`, `sample_cols_ok`, `shared_key_ok` — status flags
+-   `output$file_validation_feedback` — structured column and file validation
+
+## App Workflow
+
+### User Flow
+
+1.  Select single or dual kingdom mode
+2.  Choose file mode (if dual)
+3.  Input shared key and sample ID column(s)
+4.  Upload file(s)
+5.  Preview each table
+6.  Confirm key columns are found in each file
+
+### App Logic Flow
+
+-   Dynamically shows or hides inputs based on `kingdom_mode` and `dual_file_mode`
+-   Parses uploaded file(s) using `load_metadata_file()`
+-   Saves uploaded tables to reactive values:
+    -   `values$metadata_single`
+    -   `values$metadata_bacteria`
+    -   `values$metadata_fungi`
+-   Validates presence of:
+    -   Required sample ID columns
+    -   Shared key column(s)
+-   Validates structure:
+    -   Files uploaded
+    -   Required columns exist
+-   Triggers inline feedback messages via `output$file_validation_feedback`
+-   Generates preview tables with conditional styling for key columns
+
+#### Entry point/trigger:
+
+User selects number of kingdoms and uploads metadata file(s). UI dynamically updates based on this choice.
+
+#### UI Code and Display(s):
+
+-   `radioButtons("kingdom_mode", ...)`
+-   `radioButtons("dual_file_mode", ...)`
+-   `textInput("shared_key", ...)`
+-   `textInput("sample_col_*", ...)`
+-   `fileInput("metadata_upload_*")`
+-   `uiOutput("file_preview_*")`
+-   Inline label for kingdom type (if single)
+
+### Logic:
+
+-   observeEvent() reads uploaded files
+-   If single file: used for single or dual (paired) kingdom
+-   If dual files: each is assigned separately
+-   Input column names checked and validated against uploaded data
+
+### Structure Mode:
+
+| Mode | Files | Notes |
+|-----------------------|------------------|-------------------------------|
+| Single Kingdom | One file | Must specify kingdom type |
+| Dual Kingdoms – One File | One file | Must contain both 16S and ITS ASV/OTU sample names |
+| Dual Kingdoms – Two Files | Two files | Must contain both 16S and ITS ASV/OTU sample names and a shared mapping key |
+
+### Server Reactivity:
+
+-   File observers:
+
+``` r
+observeEvent(input$metadata_upload_single, { ... })
+observeEvent(input$metadata_upload_bacteria, { ... })
+observeEvent(input$metadata_upload_fungi, { ... })
+```
+
+-   File validation logic in `observe({ ... })`
+
+-   Column validation and feedback in:
+
+``` r
+output$file_validation_feedback <- renderUI({ ... })
+```
+
+### Dynamic Preview Outputs:
+
+-   UI: `file_preview_*`
+
+    -   `file_preview_single`
+    -   `file_preview_bacteria`
+    -   `file_preview_fungi`
+
+-   Server: `renderDataTable()` with `head(..., 6)`, scrollable
+
+Each preview table includes:
+
+-   Number of rows
+-   Unique sample IDs
+-   Unique shared key values
+-   Highlighted columns using `formatStyle()`
+
+### Storage, Validation, and Accessors
+
+-   Stored in `values$...` after parsing via:
+
+``` r
+load_metadata_file <- function(file) { ... }
+```
+
+-   Stored as-is until resolution strategy is applied
+
+-   Uploaded metadata saved as reactive values in:
+
+``` r
+values$metadata_single
+values$metadata_bacteria
+values$metadata_fungi
+values$kingdom_label
+```
+
+-   Kingdom label saved in:
+
+``` r
+values$kingdom_label
+```
+
+-   Validation Flags:
+
+``` r
+validation$file_uploaded <- TRUE
+validation$sample_col_b_ok <- TRUE
+validation$sample_col_f_ok <- TRUE
+validation$sample_cols_ok <- TRUE if all per-kingdom columns exist
+validation$shared_key_ok <- TRUE if shared_key in both metadata
+```
+
+-   Example Accessors:
+
+``` r
+values$metadata_bacteria[[input$sample_col_bacteria]]
+values$metadata_fungi[[input$shared_key]]
+```
+
+\
+
+------------------------------------------------------------------------
+
+### Subsection 1: Single vs Dual Kingdom Selection
+
+-   User selects `Single Kingdom` or `Dual Kingdoms` via `radioButtons("kingdom_mode", ...)`.
+-   If single: user must label kingdom as either 16S or 18S using `input$single_kingdom_type`.
+-   If dual:
+    -   User chooses one file or two via `input$dual_file_mode`.
+    -   Shared key (`shared_key`) and sample ID columns for each kingdom are required.
+-   File inputs are shown conditionally depending on these choices.
+-   Previews update live and display metadata summaries including:
+    -   Number of rows
+    -   Unique sample IDs
+    -   Highlighted shared/sample columns
+
+#### Single Kingdom Upload
+
+-   `input$sample_col_single` used
+-   `values$metadata_single` and `values$kingdom_label` saved (`choices = c("Bacteria/Archaea (16S)", "Fungi (ITS/18S)")`)
+-   `values$metadata_single` also used in dual-mode if "One file" is selected
+
+#### Dual Kingdom Upload
+
+-   `input$sample_col_bacteria` and `input$sample_col_fungi` used
+-   `values$metadata_bacteria` and `values$metadata_fungi` assigned
+-   Shared key must be present in both files
+
+### Subsection 2 Details: File Mode (1 file vs 2 files for dual kingdom selection)
+
+-   Triggered only if `input$kingdom_mode == "Dual Kingdoms"`
+-   Controlled by `radioButtons("dual_file_mode", ...)`
+    -   `"One file with paired kingdom info"` — user uploads one metadata file containing both kingdoms
+    -   `"Two separate metadata files"` — user uploads one file per kingdom
+-   Conditional file input UI and column input boxes shown based on selection
+
+If `"One file"`: - Metadata is stored in: `values$metadata_single` - Both 16S and 18S columns must be present in this file
+
+If `"Two files"`: - Metadata stored in: - `values$metadata_bacteria` - `values$metadata_fungi` - Shared key and sample columns must exist in both files
+
+------------------------------------------------------------------------
+
+### Subsection 3: Per-Kingdom Sample ID Input
+
+-   For single kingdom:
+    -   `input$sample_col_single` is required
+-   For dual kingdom (one or two files):
+    -   `input$sample_col_bacteria`
+    -   `input$sample_col_fungi`
+
+These columns must match the row names or identifiers in the corresponding OTU/ASV count tables. They are validated against uploaded file headers.
+
+Validation flags set:
+
+``` r
+validation$sample_col_b_ok
+validation$sample_col_f_ok
+validation$sample_cols_ok
+```
+
+------------------------------------------------------------------------
+
+### Subsection 4: Shared Key Input
+
+-   Required in all workflows (single or dual kingdom)
+-   Input field: `input$shared_key`
+-   Used to join metadata tables or OTU/ASV matrices
+-   Must exist in both files (if dual)
+
+Validation flag set:
+
+``` r
+validation$shared_key_ok
+```
+
+Access example:
+
+``` r
+values$metadata_bacteria[[input$shared_key]]
+values$metadata_fungi[[input$shared_key]]
+```
+
+------------------------------------------------------------------------
+
+### Subsection 4: Labeling for Single Kingdom
+
+-   Only shown when `input$kingdom_mode == "Single Kingdom"`
+-   `radioButtons("single_kingdom_type", ...)`
+    -   Choices: `"Bacteria/Archaea (16S)"`, `"Fungi (ITS/18S)"`
+-   Stored as:
+
+``` r
+values$kingdom_label
+```
+
+Used to annotate the metadata type in downstream object assembly.
+
+------------------------------------------------------------------------
+
+### Subsection 5: File Upload Inputs
+
+-   Inputs:
+    -   `fileInput("metadata_upload_single")`
+    -   `fileInput("metadata_upload_bacteria")`
+    -   `fileInput("metadata_upload_fungi")`
+-   File types supported: `.csv`, `.txt`
+-   Upload area styled with:
+    -   Dashed borders
+    -   Hover highlight
+    -   Drag-and-drop or click
+
+Each upload observer triggers file parsing using:
+
+``` r
+load_metadata_file(file)
+```
+
+Stored in:
+
+``` r
+values$metadata_*
+```
+
+------------------------------------------------------------------------
+
+### Subsection 5: Metadata Previews
+
+-   Triggered by successful file upload
+-   Preview tables rendered using:
+    -   `renderDataTable()`
+    -   `output$file_preview_single`
+    -   `output$file_preview_bacteria`
+    -   `output$file_preview_fungi`
+
+Each preview includes:
+
+-   Number of rows
+-   Number of unique sample IDs
+-   Number of unique shared keys
+-   Highlighting:
+    -   Sample ID column (blue for 16S, green for 18S)
+    -   Shared key column (yellow)
+
+Row preview is limited to 6 rows, user can change page length.
+
+------------------------------------------------------------------------
+
+### Subsection 6: File Validation Summary
+
+-   Rendered with:
+    -   `output$file_validation_feedback`
+
+Gives line-by-line status of:
+
+-   File presence (uploaded or not)
+-   Sample column presence
+-   Shared key presence
+-   Matching column names
+-   All shown with:
+    -   ✅ check-circle
+    -   ❌ x-circle
+    -   ⚠️ warning triangle
+
+------------------------------------------------------------------------
+
+### Subsection 7: Validation Flags
+
+Set during upload and validation steps:
+
+``` r
+validation$file_uploaded
+validation$sample_col_b_ok
+validation$sample_col_f_ok
+validation$sample_cols_ok
+validation$shared_key_ok
+```
+
+These flags are used to determine:
+
+-   Whether the user can proceed
+-   What status appears in `output$validation_summary`
+-   Whether to enable the final submit button
+
+------------------------------------------------------------------------
+
+## Summary of Section 1
+
+This section ensures that microbiome metadata files are valid, properly labeled, and structurally compatible for use in multi-kingdom workflows. The app prepares the user metadata input and ensures it meets structural requirements for downstream pairing, validation, and categorization. Once metadata is uploaded and key columns are confirmed, the app allows the user to proceed to sample matching and metadata categorization.
+
+Metadata is not altered at this stage, only validated and parsed. Key columns are checked, flagged, and previewed. Once validated, metadata is made available to the resolution and categorization steps that follow. Files are stored in reactive memory (`values$...`) and are added to `TRACTOR$attributes$metadata` upon final submission.\
+
+\
+
+------------------------------------------------------------------------
+
+# 2. Sample Matching and Resolution
+
+## Purpose
+
+This section identifies and resolves mismatches between sample identifiers in paired metadata files (16S and 18S). Proper alignment is critical for multi-kingdom analysis, as OTU/ASV abundance tables and metadata must share consistent sample identifiers.
+
+## Overview
+
+-   Compares sample IDs across bacteria and fungi metadata files using a shared key
+-   Detects mismatches in either direction
+-   Displays sample counts and highlights missing IDs
+-   Offers resolution strategies (e.g., intersect, keep all from one kingdom, pad missing rows)
+-   Applies chosen strategy to filter or align metadata tables
+
+### Key UI Elements
+
+-   Count of 16S and 18S sample IDs
+-   Shared IDs count
+-   Missing IDs per kingdom
+-   Strategy options if mismatch is detected:
+    -   Keep only shared samples
+    -   Keep all 16S, pad missing 18S
+    -   Keep all 18S, pad missing 16S
+    -   Keep all (union)
+-   `uiOutput("kingdom_match_feedback")`
+-   `uiOutput("sample_overlap_check")`
+-   `radioButtons("subset_strategy", ...)`
+-   `actionButton("resolve_mismatch")`
+-   `conditionalPanel("output.show_resolution_controls === true", ...)`
+
+**Summary UI:**
+
+-   `kingdom_match_feedback`: number of samples per kingdom
+-   `sample_overlap_check`: missing IDs from either side
+
+**Preview Outputs:**
+
+-   `output$kingdom_match_feedback`
+-   `output$sample_overlap_check`
+
+**Resolution Strategy:**
+
+UI:
+
+-   Radio options:
+    -   `"intersect"`
+    -   `"keep_16S"`
+    -   `"keep_18S"`
+    -   `"union"`
+-   Button: `apply_sample_resolution`
+
+Server:
+
+``` r
+observeEvent(input$apply_sample_resolution, { ... })
+```
+
+### Key Server Reactivity
+
+-   `output$kingdom_match_feedback`: summary of sample counts
+
+-   `output$sample_overlap_check`: preview of missing IDs
+
+-   `output$show_resolution_controls`: reactive condition to show resolution options
+
+-   `observeEvent(input$resolve_mismatch)`: applies selected strategy
+
+-   `validation$resolution_applied`: set TRUE after strategy applied
+
+-   `values$metadata_bacteria`, `values$metadata_fungi`: updated after strategy
+
+-   `output$show_resolution_controls` is TRUE when mismatch exists
+
+-   `observeEvent(input$resolve_mismatch)` applies strategy
+
+-   `validation$resolution_applied <- TRUE` is set on success
+
+\
+
+------------------------------------------------------------------------
+
+## App Workflow
+
+### User Flow
+
+1.  Upload both metadata files (or one combined file with both kingdoms)
+2.  Input shared key column used for matching
+3.  App automatically compares sample IDs across kingdoms
+4.  If mismatches are found, user selects resolution strategy
+5.  Click "Apply Strategy"
+6.  Matched metadata is saved and preview is updated
+
+### App Logic Flow
+
+-   `renderUI()` outputs feedback on sample counts and overlap
+-   Compares:
+    -   `unique(values$metadata_bacteria[[shared_key]])`
+    -   `unique(values$metadata_fungi[[shared_key]])`
+-   Displays counts + mismatched IDs (top 10 from each direction)
+-   Triggers `show_resolution_controls` only if mismatch detected
+-   When `resolve_mismatch` clicked:
+    -   Strategy is read from `input$subset_strategy`
+    -   Matching logic applied
+    -   Metadata values updated
+    -   Validation flag set
+
+------------------------------------------------------------------------
+
+### Storage, Validation, and Accessors
+
+#### Affected reactive values
+
+``` r
+values$metadata_bacteria
+values$metadata_fungi
+```
+
+These are replaced with subsetted/realigned tables after resolution.
+
+#### Validation Flags
+
+``` r
+validation$resolution_applied
+```
+
+This must be `TRUE` before form can be submitted.
+
+------------------------------------------------------------------------
+
+### Subsection 1: Sample Count and Overlap Feedback
+
+-   Triggered after file upload and shared key entry
+-   Displays:
+    -   Number of unique 16S samples
+    -   Number of unique ITS/18S samples
+    -   Overlap count
+-   UI logic:
+
+``` r
+output$kingdom_match_feedback <- renderUI({...})
+output$sample_overlap_check <- renderUI({...})
+```
+
+-   Logic computes:
+
+``` r
+intersect(bac_ids, fun_ids)
+setdiff(bac_ids, fun_ids)
+setdiff(fun_ids, bac_ids)
+```
+
+-   Displayed tables are generated using `renderDataTable()`, showing up to 10 mismatched IDs
+
+------------------------------------------------------------------------
+
+### Subsection 2: Resolution Strategies
+
+-   Triggered only if mismatches detected
+-   Shown conditionally via:
+
+``` r
+output$show_resolution_controls
+```
+
+-   User selects strategy via `radioButtons("subset_strategy", ...)`
+
+Available options:
+
+| Strategy  | Description                                 |
+|-----------|---------------------------------------------|
+| intersect | Keep only samples found in both kingdoms    |
+| keep_16S  | Keep all 16S; pad missing 18S with NA rows  |
+| keep_18S  | Keep all 18S; pad missing 16S with NA rows  |
+| union     | Keep all unique IDs; pad both where missing |
+
+-   Applied via:
+
+``` r
+observeEvent(input$resolve_mismatch, {...})
+```
+
+-   Output tables are updated immediately
+-   Notification message confirms applied strategy
+
+Validation Flag
+
+``` r
+validation$resolution_applied <- TRUE
+```
+
+\
+
+------------------------------------------------------------------------
+
+## Summary of Section 2
+
+This section detects sample mismatches between 16S and 18S metadata files and enables the user to resolve them with flexible strategies. Once a strategy is selected and applied, the filtered and/or padded metadata is stored in `values$metadata_*`. The app then proceeds to column categorization. Proper resolution ensures that sample-level metadata aligns correctly with OTU/ASV count matrices and that downstream ecological analyses can be performed without loss of integrity.
+
+\
+
+------------------------------------------------------------------------
+
+# 3. Column Categorization
+
+## Purpose
+
+This section allows users to categorize metadata columns into conceptual groups (e.g., temporal, environmental, treatment) for easier downstream access and analysis. These categories serve as grouping variables used in ordinations, modeling, stratified diversity analysis, and more.
+
+GPS-related columns, if present, are treated as an optional subsection. This follows the `optionalSectionUI` / `optionalSectionServer` modular pattern and may be skipped entirely by the user.
+
+## Overview
+
+-   Users drag and drop column names into category "buckets"
+-   Categories are stored for use in downstream workflows (e.g., group testing, distance matrices, ordination stratification)
+-   Unassigned columns are retained
+-   The spatial (GPS) category triggers optional GPS format selection in the next section
+
+### Categories Supported:
+
+-   Sample Info (sample_info)
+-   Spatial (GPS) (gps_info)
+-   Location (non-GPS) (location_info)
+-   environmental
+-   host_associated
+-   temporal
+-   treatment
+-   unassigned
+
+### UI
+
+-   uiOutput("metadata_column_sorter")
+-   Save button: `input$save_metadata_categorization`
+-   Reset button: `input$reset_column_classification`
+-   Uses optional UI toggle module
+
+### Data Requirements
+
+-   Must be completed **after** sample resolution (i.e., aligned 16S and 18S metadata)
+-   Columns must be drawn from resolved metadata (`values$metadata_bacteria`)
+-   Shared key column is excluded from categorization
+
+### Key UI Elements
+
+-   `uiOutput("metadata_column_sorter")`
+-   `actionButton("save_metadata_categorization")`
+-   Optional toggle section:
+    -   `optionalSectionUI("metadata_categorization", ...)`
+    -   `optionalSectionServer("metadata_categorization", ...)`
+
+### Key Server Reactivity
+
+-   Drag-and-drop interface (currently using `sortable::bucket_list()` — WebR incompatible)
+-   Future rework: `selectInput(multiple = TRUE)` or checkbox-based grouping
+-   Categorized metadata stored in:
+
+``` r
+values$metadata_categorized
+TRACTOR$attributes$categorized
+```
+
+-   Validation flag:
+
+``` r
+validation$columns_categorized <- TRUE
+```
+
+------------------------------------------------------------------------
+
+## App Workflow
+
+### User Flow
+
+1.  Review columns from resolved metadata
+2.  Drag or assign column names into appropriate category boxes
+3.  Optionally skip GPS (toggle off)
+4.  Click "Save Column Categories"
+5.  Proceed to column class assignment
+
+### App Logic Flow
+
+-   UI dynamically shows available columns (excluding shared key)
+-   Categories: sample_info, gps_info, location_info, environmental, host_associated, temporal, treatment, unassigned
+-   When save button is clicked:
+    -   Each group of columns is extracted
+    -   Category-specific data frames are created with the shared key and selected columns
+-   Result is saved to:
+    -   `values$metadata_categorized`
+    -   `TRACTOR$attributes$categorized`
+-   Columns not categorized are automatically assigned to `Unassigned`
+-   If GPS is disabled, GPS preview and formatting steps are skipped
+
+------------------------------------------------------------------------
+
+## Storage, Validation, and Accessors
+
+### Storage
+
+``` r
+values$metadata_categorized$environmental
+TRACTOR$attributes$categorized$temporal
+```
+
+### Validation
+
+``` r
+validation$columns_categorized <- TRUE
+```
+
+------------------------------------------------------------------------
+
+### Subsection: Spatial (GPS) Category (Optional)
+
+#### Purpose
+
+The GPS category holds spatial coordinate columns for geospatial analyses (e.g., distance decay, mapping, spatial autocorrelation). If any columns are placed in the “Spatial (GPS)” category, the next section will prompt the user to define the GPS structure and format.
+
+#### Implementation
+
+-   Controlled by:
+
+``` r
+optionalSectionUI("gps_section", title = ..., body_ui = uiOutput("gps_format_ui"))
+optionalSectionServer("gps_section", render_body = ...)
+```
+
+-   UI renders only if:
+    -   GPS columns were assigned
+    -   GPS section is toggled "on"
+-   Validation flag:
+
+``` r
+validation$gps_format_selected <- TRUE  # or skipped if section disabled
+```
+
+-   Output preview is handled by `gps_data_preview` (see next section)
+
+#### Skipping GPS
+
+-   If no columns are categorized as GPS:
+    -   The section shows a confirmation checkbox: “Confirm: This dataset has no GPS data”
+    -   Validation flag is still set if user confirms
+
+------------------------------------------------------------------------
+
+## Functionality within Specific Category Assignments
+
+### Subsection 1: GPS Format Selection (Conditional UI)
+
+#### Purpose
+
+This subsection collects format details for spatial metadata columns assigned to the “Spatial (GPS)” category. Correct format declarations are critical for parsing coordinates, performing geospatial calculations, and preparing distance matrices.
+
+If no GPS columns were assigned or if the user disables the GPS section toggle, this entire UI can be skipped.
+
+#### Entry Point / Trigger
+
+-   Appears only if:
+    -   One or more columns are assigned to the `gps_info` category
+    -   The GPS section toggle (`gps_section`) is enabled
+-   Controlled via the reusable module:
+
+``` r
+optionalSectionUI("gps_section", title = ..., icon = ..., body_ui = uiOutput("gps_format_ui"))
+optionalSectionServer("gps_section", render_body = ...)
+```
+
+-   Toggled state (`gps_enabled()`) is checked before saving validation flag
+
+------------------------------------------------------------------------
+
+#### Structure Mode
+
+The user first defines how GPS coordinates are structured:
+
+-   **Single column**: latitude and longitude combined in one field
+-   **Two columns**: separate latitude and longitude fields
+
+Rendered UI:
+
+``` r
+output$gps_column_structure_ui <- renderUI({...})
+```
+
+Displayed only if GPS columns are present.
+
+------------------------------------------------------------------------
+
+#### Format Input UI
+
+UI for declaring the format of GPS columns:
+
+-   For **two columns**:
+    -   Each column gets a radioButtons set with options:
+        -   `"Decimal degrees"`
+        -   `"DMS"`
+        -   `"UTM"`
+        -   `"Other / unknown"`
+-   For **single column**:
+    -   Options include:
+        -   `"Decimal comma-separated"`
+        -   `"DMS combined"`
+        -   `"UTM string"`
+        -   `"Other"`
+
+Rendered via:
+
+``` r
+output$gps_format_ui <- renderUI({...})
+```
+
+-   Stored selections use namespaced inputs like: `input$gps_format_latitude`
+
+------------------------------------------------------------------------
+
+#### Server Logic
+
+When user clicks **Save GPS Format**:
+
+-   If `gps_section` is toggled **off**, the format is skipped and validation is still marked complete
+-   Otherwise:
+    -   Selected format for each column is saved in:
+
+``` r
+values$gps_column_formats[[colname]]
+```
+
+-   The structure type is saved in:
+
+``` r
+values$gps_structure_type  # "single" or "two"
+```
+
+-   All results are copied to:
+
+``` r
+TRACTOR$attributes$config$gps_format
+TRACTOR$attributes$config$gps_structure
+```
+
+-   Final validation:
+
+``` r
+validation$gps_format_selected <- TRUE
+```
+
+------------------------------------------------------------------------
+
+#### Preview Output
+
+A 2-row preview of GPS data may be shown after format selection using:
+
+``` r
+output$gps_data_preview <- renderUI({...})
+```
+
+-   Preview is drawn from: `values$metadata_categorized$gps_info`
+
+------------------------------------------------------------------------
+
+#### Edge Case Handling
+
+-   If no GPS columns assigned:
+    -   A checkbox is rendered for user to confirm: “This dataset has no GPS data”
+    -   This bypasses the format selection while still enabling validation
+-   If format is incomplete:
+    -   A warning is shown
+    -   Validation flag remains FALSE
+
+------------------------------------------------------------------------
+
+#### Summary (GPS Subsection)
+
+This GPS-specific UI supports precise handling of spatial metadata. Its optional nature is handled using the toggle module and structured validation. GPS formatting is critical for any spatial modeling, mapping, or correlation analysis and is stored in the TRACTOR configuration for downstream use.
+
+------------------------------------------------------------------------
+
+#### OLD/ignore {.unlisted}
+
+##### GPS Structure and Format Assignment
+
+###### Structure (selection and inputs)
+
+User selects:
+
+-   `"single"` or `"two"`
+
+Inputs:
+
+-   `gps_structure_type`
+-   `gps_lat_col`, `gps_lon_col`
+-   `gps_single_col`
+
+###### Format Selection
+
+For `"single"`: - `"decimal_comma"`, `"dms_combined"`, `"utm_single"`, `"other"`
+
+For `"two"`: - `"decimal"`, `"dms"`, `"utm"`, `"other"`
+
+###### UI
+
+-   `gps_format_ui`
+-   Save: `save_gps_format`
+
+###### GPS Preview
+
+-   Output: `gps_data_preview`
+-   Shows top 2 rows of selected GPS columns
+
+``` r
+output$gps_data_preview <- renderUI({
+  head(gps_df[, gps_cols], 2)
+})
+```
+
+###### Storage
+
+``` r
+TRACTOR$attributes$config$gps_structure
+TRACTOR$attributes$config$gps_format
+```
+
+###### Validation Flag
+
+``` r
+validation$gps_format_selected <- TRUE
+```
+
+\
+
+------------------------------------------------------------------------
+
+### Future Additions
+
+#### Exporting and Reusability of Categorizations
+
+This feature would support re-using column categorizations across projects or sessions.\
+
+Categorization mappings can be exported as .yaml, .json, or .csv files. 
+
+``` r
+TRACTOR$attributes$config$column_categories <- list(
+  sample_info = c("SampleID", "Batch"),
+  environmental = c("pH", "Moisture")
+)
+```
+
+- Future feature: `downloadButton("export_categories")`
+
+#### Modular UI Support
+
+Since we're using `optionalSectionUI()` already, clarify that this whole section could be wrapped in a toggle module (`metadata_categorization`), similar to GPS.
+
+```r
+optionalSectionUI("metadata_categorization", ...)
+optionalSectionServer("metadata_categorization", ...)
+```
+
+And should be documented clearly in the section’s structure and logic.
+
+---
+
+#### Fallback / Default Behavior
+
+Explain what happens if a user skips categorization (optional), e.g.:
+
+- Default behavior is to retain all columns in `Unassigned`
+- App does **not** drop unassigned columns
+- User can categorize later manually
+
+---
+
+#### Column Filtering for Usability
+
+Future or current enhancements:
+
+- Add ability to hide non-informative columns (e.g., all-NA or all-identical)
+- Support for checkbox filter: *Show only uncategorized columns*
+
+---
+
+#### Track Skipped/Inactive Sections in TRACTOR object
+
+We already logging skipped sections (e.g., GPS). Add categorization status to:
+
+```r
+TRACTOR$attributes$config$skipped_sections <- list(
+  categorization = FALSE,  # or TRUE if user disabled
+  gps = TRUE
+)
+```
+
+This allows reproducibility and helps explain downstream behavior.
+
+---
+
+#### Categorization Preview
+
+Let users see a summary like:
+
+```r
+output$categorization_summary <- renderUI({...})
+```
+
+Display:
+
+| Category       | # Columns |
+|----------------|-----------|
+| environmental  | 4         |
+| gps_info       | 2         |
+| unassigned     | 12        |
+
+---
+
+
+#### Other Ideas / To-Do
+
+- Add ability to export/import categorization mapping
+- Replace `sortable::bucket_list()` with WebR-compatible UI
+- Optional: summarize column counts per category before save
+- Optional: flag categories that are completely empty
+- Optional: add column guidance questions before UI renders
+- Optional: support YAML-based config for predefined categories
+
+\
+
+------------------------------------------------------------------------
+
+## Summary of Section 3
+
+This section defines and captures metadata column groupings to support downstream ecological and statistical workflows. Categorized columns are stored for easy programmatic access within ordination, clustering, and diversity pipelines. GPS column categorization is treated as optional and routed through its own toggleable section, ensuring modularity and flexibility.
+
+/
+
+------------------------------------------------------------------------
+
+# 4. Column Classification
+
+## Purpose
+
+This section handles downstream column type declarations (e.g., `factor`, `numeric`) for modeling and plotting.
+
+Column types are stored in the `TRACTOR` object and used to:
+
+- Coerce variables during model fitting or ordination
+- Guide grouping, coloring, or stratification logic
+- Prevent errors caused by incorrect type assumptions (e.g., character vs factor)
+
+
+## Further Reading and Documentation
+
+In microbiome analyses, the class of each metadata column is important for ensuring valid and properly functioning models and accurate interpretation of results. The purpose and downstream use of metadata column class (type) assignment is documented further here: [column_classification.Rmd](moses/docs/reference_docs/column_classification.Rmd)
+
+This file explains:
+
+-   Why explicitly defined metadata column types are important and how class types such as `factor`, `ordered`, `numeric`, `character`, and `integer` are important for ensuring accurate interpretation and proper function of downstream modeling and analysis.
+-   The purpose, implementation, and downstream usage of metadata column class assignment functionality to store metadata classes in the TRACTOR object. This feature supports better statistical modeling, plotting, and distance-based analysis in microbial ecology.
+
+This feature supports better statistical modeling, ordination, and distance-based analysis and stores column classes (e.g., `numeric`, `factor`, `ordered`) in `TRACTOR$attributes$config$column_classes`.
+
+Example:
+
+``` r
+TRACTOR$attributes$config$column_classes <- list(
+  sample_info = list(
+    HostID = "character",
+    Replicate = "factor"
+  ),
+  temporal = list(
+    Day = "ordered"
+  ),
+  environmental = list(
+    pH = "numeric",
+    Moisture = "numeric"
+  )
+)
+```
+
+Column class assignment directly supports:
+
+-   Grouping in statistical models (`lm()`, `lme4::lmer()`, `vegan::adonis()`)
+-   Ordination and multivariate modeling (`vegan::envfit`, `capscale`)
+-   Plot aesthetics (`ggplot2` color/fill/shape mappings)
+-   Richness and diversity stratification
+-   Distance matrix stratification (PERMANOVA, Mantel tests)
+-   Beta diversity partitioning by metadata `grouping_vars`
+
+See the linked `.Rmd` for full implementation details, including UI design, validation, default suggestions, optional coercion preview, and the exact structure used to store these definitions in: `TRACTOR$attributes$config$column_classes`.
+
+\
+
+## Overview
+
+- Workflow position: triggered after metadata categorization
+- User selects a class for each column (from dropdown menu)
+- App suggests default class based on column properties (e.g., all integers → "integer")
+- Column classes are stored in `TRACTOR$attributes$config$column_classes`
+- Optional coercion preview warns users about problematic conversions (e.g., coercing characters to numeric)
+
+### Data Requirements
+
+- Requires categorized metadata from Section 3
+- Operates on `values$metadata_categorized[[category]]`
+- Excludes shared key column from classification
+
+### Supported R Classes
+
+-   `"character"`
+-   `"numeric"`
+-   `"integer"`
+-   `"factor"`
+-   `"ordered"`
+
+### Key UI Elements
+
+-   `uiOutput("column_classification_ui")`: displays dropdowns
+-   `selectInput("colclass_*")`: one per column
+-   Save: `actionButton("save_column_classes")`
+-   Optional preview: `uiOutput("coercion_preview")` (for NA coercion check)
+
+```         
+uiOutput("column_classification_ui")
+```
+
+Each select box includes the following options:
+
+```         
+choices = c("character", "numeric", "integer", "factor", "ordered")
+```
+
+### Key Server Reactivity
+
+- `renderUI(...)`: loops through all columns across categories
+- Detects defaults based on data
+- Saves to:
+
+```r
+values$column_classes
+TRACTOR$attributes$config$column_classes
+```
+
+#$## Default Assignment Logic
+
+``` r
+if (is.numeric(x)) -> "numeric"
+if (all(x %% 1 == 0)) -> "integer"
+if (unique(x) < 10 & is.character) -> "factor"
+```
+
+------------------------------------------------------------------------
+
+## App Workflow
+
+### User Flow
+
+Triggered after metadata categorization.\
+
+1. For each column shown, review the default-suggested data type
+2. Change to desired class if needed (e.g., from `character` to `factor`)
+3. Optionally review coercion preview warnings
+4. Click "Save Column Types"
+5. Proceed to downstream modeling or ordination analysis
+
+
+### App Logic Flow
+
+- Loops over each column in each categorized metadata subset
+- Each column in a category is displayed with a `selectInput()` to let the user define its class.
+- Suggests default class:
+  - `numeric` if values are numeric
+  - `integer` if all values are whole numbers
+  - `factor` if few unique values and character
+  - Otherwise defaults to `character`
+
+Sample logic:
+
+```r
+if (is.numeric(x)) default <- "numeric"
+if (all(x %% 1 == 0)) default <- "integer"
+if (length(unique(na.omit(x))) < 10 && is.character(x)) default <- "factor"
+```
+
+- Collects user selections via `input$colclass_<category>_<column>`
+- Saves full mapping to:
+
+```r
+TRACTOR$attributes$config$column_classes[[category]][[column]]
+```
+
+
+
+####: Server – Render Inputs with Class Suggestions
+
+```         
+output$column_classification_ui <- renderUI({
+  req(values$metadata_categorized)
+  all_inputs <- list()
+
+  for (cat in names(values$metadata_categorized)) {
+    df <- values$metadata_categorized[[cat]]
+    if (is.null(df)) next
+    cols <- setdiff(colnames(df), input$shared_key)
+    if (length(cols) == 0) next
+
+    inputs <- lapply(cols, function(col) {
+      # Prefill class suggestion
+      column_data <- df[[col]]
+      default_class <- "character"
+      if (is.numeric(column_data)) default_class <- "numeric"
+      if (all(column_data %% 1 == 0, na.rm = TRUE)) default_class <- "integer"
+      if (length(unique(na.omit(column_data))) < 10 && is.character(column_data))
+        default_class <- "factor"
+
+      selectInput(
+        inputId = paste0("colclass_", cat, "_", col),
+        label = paste0("[", cat, "] ", col),
+        choices = c("character", "numeric", "integer", "factor", "ordered"),
+        selected = default_class
+      )
+    })
+
+    all_inputs <- append(all_inputs, inputs)
+  }
+
+  tagList(
+    h4("Assign Column Types"),
+    all_inputs,
+    actionButton("save_column_classes", "Save Column Types", class = "btn btn-success mt-3")
+  )
+})
+```
+
+#### Save the Assignments
+
+```         
+observeEvent(input$save_column_classes, {
+  result <- list()
+
+  for (cat in names(values$metadata_categorized)) {
+    df <- values$metadata_categorized[[cat]]
+    if (is.null(df)) next
+    cols <- setdiff(colnames(df), input$shared_key)
+
+    result[[cat]] <- list()
+    for (col in cols) {
+      input_id <- paste0("colclass_", cat, "_", col)
+      result[[cat]][[col]] <- input[[input_id]] %||% "character"
+    }
+  }
+
+  values$column_classes <- result
+  TRACTOR$attributes$config$column_classes <- result
+  validation$column_classes_saved <- TRUE
+
+  showNotification("Column types saved.", type = "message")
+})
+```
+
+#### Optional: Auto-Coerce Columns Later
+
+If necessary to prepare metadata for analysis:
+
+```         
+for (cat in names(df_list)) {
+  df <- df_list[[cat]]
+  for (col in colnames(df)) {
+    class_type <- TRACTOR$attributes$config$column_classes[[cat]][[col]]
+    if (class_type == "factor") df[[col]] <- as.factor(df[[col]])
+    if (class_type == "ordered") df[[col]] <- factor(df[[col]], ordered = TRUE)
+    if (class_type == "numeric") df[[col]] <- as.numeric(df[[col]])
+    if (class_type == "integer") df[[col]] <- as.integer(df[[col]])
+  }
+  df_list[[cat]] <- df
+}
+```
+
+------------------------------------------------------------------------
+
+## Storage, Validation, and Accessors
+
+### Storage
+
+```r
+values$column_classes
+TRACTOR$attributes$config$column_classes
+```
+
+Example:
+
+```r
+column_classes = list(
+  environmental = list(
+    pH = "numeric",
+    Moisture = "numeric"
+  ),
+  temporal = list(
+    Week = "ordered"
+  )
+)
+```
+
+### Validation Flag
+
+```r
+validation$column_classes_saved <- TRUE
+```
+
+### Accessors
+
+Used downstream in modeling pipelines:
+
+```r
+col_class <- TRACTOR$attributes$config$column_classes$environmental$pH
+```
+
+------------------------------------------------------------------------
+
+### Subsection 1: Coercion Preview 
+
+#### Purpose
+
+Warn users if coercing their selected class would result in invalid or all-NA values.
+
+#### UI
+
+- `uiOutput("coercion_preview")` rendered below dropdowns
+- Scans each column’s values and compares with attempted coercion
+
+#### Logic
+
+```r
+coerced <- tryCatch({
+  if (cls == "numeric") as.numeric(vec)
+  if (cls == "integer") as.integer(vec)
+  if (cls == "factor") as.factor(vec)
+  ...
+}, error = function(e) NA)
+```
+
+If result is all `NA` and original had non-NA values, display a warning:
+
+```r
+if (all(is.na(coerced)) && any(!is.na(vec))) {
+  warn <- TRUE
+}
+```
+
+#### Behavior
+
+- Non-blocking (user may still proceed)
+- Shown inline for each column with an issue
+- Suggests switching class or inspecting data
+
+\
+
+------------------------------------------------------------------------
+
+## Summary
+
+This section captures how users intend metadata variables to behave statistically. Column type classification informs both internal data coercion and the design of downstream analyses. Definitions are stored in the TRACTOR object and can be reused or exported for reproducibility. Optional preview logic highlights potentially invalid coercions.\
+
+| Step | Implementation |
+|-----------------------|------------------------------------------------|
+| UI | `uiOutput("column_classification_ui")` + save button |
+| Server | `renderUI()` loop + `observeEvent()` to save |
+| Storage | `TRACTOR$attributes$config$column_classes` |
+| Validation | `validation$column_classes_saved <- TRUE` |
+| Coercion | Optional type coercion if necessary for downstream analyses or if columns class assignment left empty |
+
+\
+
+------------------------------------------------------------------------
+
+# 5. placeholder for other sections
+
+\
+
+------------------------------------------------------------------------
+
+# 6. Validation Framework
+
+Validation flags are stored in:
+
+``` r
+validation <- reactiveValues(
+  file_uploaded = FALSE,
+  sample_cols_ok = FALSE,
+  shared_key_ok = FALSE,
+  resolution_applied = FALSE,
+  columns_categorized = FALSE,
+  column_classes_saved = FALSE,
+  gps_format_selected = FALSE
+)
+```
+
+Displayed in:
+
+``` r
+output$validation_summary
+```
+
+Icons: ✅ `bs_icon("check-circle-fill")`, ❌ `bs_icon("x-circle")`
+
+------------------------------------------------------------------------
+
+# 7. The TRACTOR Object
+
+## Final Structure
+
+``` r
+TRACTOR <- list(
+  table = tibble::tibble(),       # OTU/ASV counts
+  ranks = tibble::tibble(),       # taxonomy table
+  attributes = list(              # sample metadata
+    metadata = list(
+      bacteria = tibble::tibble(),
+      fungi = tibble::tibble()
+    ),
+    categorized = list(
+      sample_info = NULL,
+      gps_info = NULL,
+      location_info = NULL,
+      treatment = NULL,
+      environmental = NULL,
+      host_associated = NULL,
+      temporal = NULL
+    ),
+    config = list(
+      kingdom_label = NULL,   # "Dual" or if Single Kingom: "Bacteria/Archaea (16S)" or "Fungi (ITS/18S)"
+      resolution_applied = FALSE,
+      columns_categorized = FALSE,
+      gps_format_selected = FALSE,
+      grouping_vars = list()  
+      gps_structure = list(),
+      gps_format = list(),
+      column_classes = list(),
+    )
+  ),
+  clustering = tibble::tibble(),
+  ordinations = tibble::tibble(),
+  richness = tibble::tibble(),
+  ties = list(    # stores dissimilarity matrices with slots for partioning by grouping_vars
+      sample_data = list(
+      spatial = list(),
+      environmental = list(
+        all = list(
+          geodist_Bac = NULL,
+          geodist_Fun = NULL,
+          geodist_all = NULL
+        ),
+        Site = list()
+      )
+    )
+  )
+)
+
+class(TRACTOR) <- "TRACTOR"
+```
+
+## Access Patterns
+
+``` r
+TRACTOR$attributes$metadata$fungi
+TRACTOR$attributes$categorized$temporal
+TRACTOR$attributes$config$gps_structure
+```
+
+------------------------------------------------------------------------
+
+# 8. Grouping Variables (`grouping_vars`)
+
+Categorized metadata columns (section 3 define grouping variables used for data slicing, stratification, and testing (e.g., by host, location, treatment, time). This features enables easu multivariate group testing in addition to nested and/or block-design analyses. These groupings are stored in `TRACTOR$attributes$config$grouping_vars`.
+
+Each entry maps a category name to its assigned column names, e.g.:
+
+``` r
+grouping_vars = list(
+  environmental = c("pH", "Moisture"),
+  temporal = c("Day", "Week")
+)
+```
+
+This allows the `$ties` list available to store global dissimilarity matrices and β-diversity outputs, as well as those partitioned by `grouping_vars`.
+
+------------------------------------------------------------------------
+
+# 9. Placeholder: OTU/ASV Count Table Upload App
+
+This future component will allow users to upload one or two abundance matrices:
+
+-   Format: samples as rows, OTUs or ASVs as columns
+-   Stored in:
+
+``` r
+TRACTOR$table
+```
+
+-   UI: one file input for single kingdom, two inputs for dual
+-   Will include basic dimension check, numeric-only validation
+
+------------------------------------------------------------------------
+
+# 10. Placeholder: Taxonomy Table Upload App
+
+This simple utility will upload per-kingdom taxonomic assignments:
+
+-   Format: rows = OTUs/ASVs, columns = taxonomic levels
+-   Stored in:
+
+``` r
+TRACTOR$ranks
+```
+
+-   Automatically linked by shared ID key selected previously
+-   Potential to merge both 16S and ITS into a single object
+
+------------------------------------------------------------------------
+
+# 11. Future Work
+
+-   `buildTRACTOR()` function to finalize object after validation
+-   Export `TRACTOR$attributes$config` to `.json` or `.yaml`
+-   Save all section toggle states
+-   Preview or summarize configuration for reproducibility

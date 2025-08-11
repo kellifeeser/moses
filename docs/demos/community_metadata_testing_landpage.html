@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Microbiome Analysis UI</title>
+  <link rel="stylesheet" href="../runtime/fontawesome/css/all.min.css">
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 40px;
+      max-width: 700px;
+    }
+    h1 {
+      font-size: 24px;
+    }
+    .section {
+      margin-bottom: 20px;
+    }
+    .label {
+      font-weight: bold;
+      margin-bottom: 5px;
+      display: block;
+    }
+    .label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+    .radio-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .radio-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-radius: 20px;
+      font-weight: bold;
+      color: white;
+      cursor: pointer;
+      font-family: sans-serif;
+      transition: 0.2s ease;
+    }
+
+    .bacteria { background-color: #006e90; }
+    .fungi { background-color: #f18f01; }
+    .both { background-color: #888888; }
+
+    input[type="radio"]:checked + label {
+      box-shadow: 0 0 0 3px rgba(0,0,0,0.2);
+      outline: 2px solid black;
+    }
+
+
+    select, input[type="radio"], input[type="checkbox"] {
+      margin-right: 10px;
+      margin-top: 5px;
+      margin-bottom: 10px;
+    }
+    .learn-more {
+      color: #1a73e8;
+      font-size: 0.9em;
+      margin-left: 10px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .explore-btn {
+      float: right;
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>How does the microbiome shift among metadata factors (e.g., Treatments)?</h1>
+
+  <p>
+    Test for differences or shifts in the microbiome according to a specific sample metadata factor as selected below.
+  </p>
+
+  <div class="section">
+    <div class="label-row">
+      <span class="label">Select data</span>
+    </div>
+    <div class="radio-group">
+      <input type="radio" id="bacteria" name="kingdom" hidden>
+      <label for="bacteria" class="radio-btn bacteria">
+        <i class="fa-solid fa-bacteria"></i> Bacteria-Archaea
+      </label>
+
+      <input type="radio" id="fungi" name="kingdom" hidden>
+      <label for="fungi" class="radio-btn fungi">
+        <i class="fa-solid fa-spaghetti-monster-flying"></i> Fungi
+      </label>
+
+      <input type="radio" id="both" name="kingdom" hidden>
+      <label for="both" class="radio-btn both">
+        <i class="fa-solid fa-bacterium"></i>
+        <i class="fa-solid fa-spaghetti-monster-flying"></i></i> B + F
+      </label>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="label-row">
+      <span class="label">Select metadata factor to test</span>
+       <!-- <a class="learn-more" href="#">Learn More</a> -->
+    </div>
+   <select>
+      <option>Site</option>
+      <option>Host</option>
+      <option>Region</option>
+    </select>
+  </div>
+
+  <div class="section">
+    <div class="label-row">
+      <span class="label">I am interested in the:</span>
+      <a class="learn-more" href="#">Learn More</a>
+    </div>
+   <label><input type="radio" name="variation">variation in presence/absence of taxa, or</label><br>
+    <label><input type="radio" name="variation">abundance-weighted variation</label>
+  </div>
+
+  <div class="section">
+    <span class="label">At taxonomic level:</span>
+    <select>
+      <option>OTU/ASV</option>
+      <option>Genus</option>
+      <option>Family</option>
+      <option>Order</option>
+      <option>Class</option>
+      <option>Phylum</option>
+      <option>Kingdom</option>
+    </select>
+    <!-- <a class="learn-more" href="#">Learn More</a> -->
+  </div>
+
+  <div class="section">
+    <div class="label-row">
+      <span class="label">I am interested in changes in:</span>
+      <a class="learn-more" href="#">Learn More</a>
+    </div>
+    <label><input type="checkbox">community composition</label><br>
+    <label><input type="checkbox">within-group variation (dispersion)</label><br>
+    <label><input type="checkbox">among-group variation</label><br>
+    <label><input type="checkbox">alpha diversity/species richness</label>
+  </div>
+
+  <div class="section">
+    <div class="label-row">
+      <span class="label">I want to see</span>
+      <a class="learn-more" href="#">Learn More</a>
+    </div>
+    <label><input type="checkbox">figures</label><br>
+    <label><input type="checkbox">numbers and statistics</label><br>
+    <label><input type="checkbox">tables</label>
+  </div>
+
+  <button class="explore-btn">Explore <i class="fa-solid fa-rocket"></i></button>
+
+</body>
+</html>
